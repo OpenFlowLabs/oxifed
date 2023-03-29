@@ -1,0 +1,22 @@
+[package]
+name = "oxifed_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+activitypub_federation = { version = "0.4.0", features = ["axum"], default-features = false }
+async-trait = "0.1.68"
+axum = "0.6.12"
+bonsaidb = { version = "0.4.1", features = ["local-full", "password-hashing", "local-async"] }
+chrono = { version = "0.4.24", features = ["serde"] }
+clap = { version = "4.1.14", features = ["derive", "env"] }
+dotenvy = { version = "0.15.7", features = ["clap"] }
+miette = { version = "5.6.0", features = ["fancy"] }
+serde = { version = "1.0.159", features = ["derive"] }
+thiserror = "1.0.40"
+tokio = { version = "1.27.0", features = ["fs"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
+url = { version = "2.3.1", features = ["serde"] }
