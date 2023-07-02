@@ -1,0 +1,10 @@
+[book]
+authors = ["Till Wegmueller"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Oxifed Documentation"
+
+[preprocessor.plantuml]
+plantuml-cmd="plantuml"
+use-data-uris=true

@@ -1,0 +1,14 @@
+[package]
+name = "actwkd"
+description = "Worker for received activities"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+license.workspace = true
+categories.workspace = true
+
+
+[dependencies]

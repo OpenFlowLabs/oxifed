@@ -1,0 +1,13 @@
+[package]
+name = "objstord"
+description = "Activitypub Object storage service. Stores all Public Data and blobs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+license.workspace = true
+categories.workspace = true
+
+[dependencies]

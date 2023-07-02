@@ -1,0 +1,13 @@
+[package]
+name = "activitypub"
+description = "Helpers for activitypub JSON types I care about"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+license.workspace = true
+categories.workspace = true
+
+[dependencies]

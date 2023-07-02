@@ -1,73 +1,50 @@
+use crate::activities::create_post::CreateArticle;
+use crate::AppData;
+use crate::{Error, Result};
 use activitypub_federation::config::Data;
 use activitypub_federation::http_signatures::generate_actor_keypair;
 use activitypub_federation::protocol::public_key::PublicKey;
 use activitypub_federation::protocol::verification::verify_domains_match;
 use activitypub_federation::traits::{Actor, Object};
 use activitypub_federation::{fetch::object_id::ObjectId, kinds::actor::PersonType};
-use bonsaidb::core::schema::InsertError;
-use bonsaidb::{
-    core::schema::{Collection, Schema, SerializedCollection},
-    local::AsyncDatabase,
-};
+
 use chrono::Local;
 use chrono::NaiveDateTime;
-use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use url::Url;
+use Debug;
 
-#[derive(Debug, Error, Diagnostic)]
-pub enum Error {
-    #[error(transparent)]
-    IOError(#[from] std::io::Error),
+use super::article::InternalArticle;
 
-    #[error(transparent)]
-    VarError(#[from] std::env::VarError),
-
-    #[error(transparent)]
-    BonsaiDBError(#[from] bonsaidb::core::Error),
-
-    #[error(transparent)]
-    URLParseError(#[from] url::ParseError),
-
-    #[error(transparent)]
-    ActivityPubError(#[from] activitypub_federation::error::Error),
-
-    #[error(transparent)]
-    InsertError(#[from] InsertError<DBPerson>),
-}
-
-pub type Result<T> = miette::Result<T, Error>;
-
-#[derive(Debug, Schema)]
-#[schema(name="Oxifed", collections = [DBPerson])]
-pub struct AppSchema;
-
-#[derive(Collection, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[collection(name = "Person", primary_key = String, natural_id = |user: &DBPerson| Some(user.federation_id.to_string()))]
-pub struct DBPerson {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InternalPerson {
     pub prefered_username: String,
     pub display_name: String,
     pub password_hash: Option<String>,
     pub email: Option<String>,
-    pub federation_id: Url,
+    pub ap_id: Url,
     pub inbox: Url,
     pub outbox: Url,
     pub local: bool,
     pub public_key: String,
     pub private_key: Option<String>,
     pub last_refreshed_at: NaiveDateTime,
+    pub followers: Vec<Url>,
 }
 
-impl DBPerson {
-    pub fn new_local(hostname: &str, name: String) -> Result<DBPerson> {
-        let ap_id = Url::parse(&format!("//{}/{}", hostname, &name))?.into();
+impl InternalPerson {
+    pub fn build_ap_id(hostname: &str, name: &str) -> Result<Url> {
+        Ok(Url::parse(&format!("//{}/{}", hostname, name))?)
+    }
+
+    pub fn new_local(hostname: &str, name: String) -> Result<InternalPerson> {
+        let ap_id = InternalPerson::build_ap_id(hostname, &name)?.into();
         let inbox = Url::parse(&format!("//{}/{}/inbox", hostname, &name))?;
         let outbox = Url::parse(&format!("//{}/{}/outbox", hostname, &name))?;
         let keypair = generate_actor_keypair()?;
-        Ok(DBPerson {
+        Ok(InternalPerson {
             prefered_username: name.clone(),
-            federation_id: ap_id,
+            ap_id,
             inbox,
             public_key: keypair.public_key,
             private_key: Some(keypair.private_key),
@@ -77,30 +54,70 @@ impl DBPerson {
             password_hash: None,
             email: None,
             outbox,
+            followers: vec![],
         })
+    }
+
+    pub fn followers(&self) -> &Vec<Url> {
+        &self.followers
+    }
+
+    pub fn followers_url(&self) -> Result<Url> {
+        Ok(Url::parse(&format!(
+            "{}/followers",
+            self.ap_id.to_string()
+        ))?)
+    }
+
+    pub async fn follow(&self, other: &str, data: &Data<AppData>) -> Result<()> {
+        /*
+        let other: InternalPerson = webfinger_resolve_actor(other, data).await?;
+        let id = generate_object_id(data.domain())?;
+        let follow = Follow::new(self.ap_id.clone(), other.ap_id.clone(), id.clone());
+        self.send(follow, vec![other.shared_inbox_or_inbox()], data)
+            .await?;
+        Ok(())
+        */
+        todo!()
+    }
+
+    pub async fn post(&self, post: InternalArticle, data: &Data<AppData>) -> Result<()> {
+        /*
+        let id = generate_object_id(data.domain())?;
+        let create = CreatePost::new(post.into_json(data).await?, id.clone());
+        let mut inboxes = vec![];
+        for f in self.followers.clone() {
+            let user: InternalPerson = ObjectId::from(f).dereference(data).await?;
+            inboxes.push(user.shared_inbox_or_inbox());
+        }
+        self.send(create, inboxes, data).await?;
+        Ok(())
+        */
+        todo!()
     }
 }
 
-impl From<Person> for DBPerson {
+impl From<Person> for InternalPerson {
     fn from(value: Person) -> Self {
-        DBPerson {
+        InternalPerson {
             prefered_username: value.preferred_username,
             display_name: value.name,
             password_hash: None,
             email: None,
-            federation_id: value.id.inner().clone(),
+            ap_id: value.id.inner().clone(),
             inbox: value.inbox,
             outbox: value.outbox,
             local: false,
             public_key: value.public_key.public_key_pem,
             private_key: None,
             last_refreshed_at: Local::now().naive_local(),
+            followers: vec![],
         }
     }
 }
 
 #[async_trait::async_trait]
-impl Object for DBPerson {
+impl Object for InternalPerson {
     type DataType = AppData;
 
     type Kind = Person;
@@ -111,8 +128,8 @@ impl Object for DBPerson {
         object_id: Url,
         data: &Data<Self::DataType>,
     ) -> std::result::Result<Option<Self>, Self::Error> {
-        let db_person = DBPerson::get_async(object_id.to_string(), &data.db).await?;
-        Ok(db_person.map(|d| d.contents))
+        //TODO: Implement Serializable Option Type so I can send over the wire of nothing got found
+        Ok(data.get_object_by_id(object_id, "person").await.ok())
     }
 
     async fn into_json(
@@ -135,14 +152,13 @@ impl Object for DBPerson {
         json: Self::Kind,
         data: &Data<Self::DataType>,
     ) -> std::result::Result<Self, Self::Error> {
-        let db_person = DBPerson::push_async(json.into(), &data.db).await?;
-        Ok(db_person.contents)
+        Ok(data.receive_object(&json, "receive_person").await?.into())
     }
 }
 
-impl Actor for DBPerson {
+impl Actor for InternalPerson {
     fn id(&self) -> Url {
-        self.federation_id.clone()
+        self.ap_id.clone()
     }
 
     fn public_key_pem(&self) -> &str {
@@ -161,7 +177,7 @@ impl Actor for DBPerson {
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Person {
-    id: ObjectId<DBPerson>,
+    id: ObjectId<InternalPerson>,
     #[serde(rename = "type")]
     kind: PersonType,
     preferred_username: String,
@@ -171,10 +187,10 @@ pub struct Person {
     public_key: PublicKey,
 }
 
-impl From<DBPerson> for Person {
-    fn from(value: DBPerson) -> Self {
+impl From<InternalPerson> for Person {
+    fn from(value: InternalPerson) -> Self {
         Self {
-            id: ObjectId::from(value.federation_id.clone()),
+            id: ObjectId::from(value.ap_id.clone()),
             kind: PersonType::Person,
             preferred_username: value.prefered_username.clone(),
             name: value.display_name.clone(),
@@ -185,19 +201,8 @@ impl From<DBPerson> for Person {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AppData {
-    pub db: AsyncDatabase,
-}
-
-pub fn env_var(name: &str) -> Result<String> {
-    Ok(std::env::var(name)?)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(untagged)]
+pub enum PersonAcceptedActivities {
+    CreateArticle(CreateArticle),
 }
