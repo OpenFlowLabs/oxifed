@@ -1,4 +1,8 @@
+mod user;
+
+use crate::user::*;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::{Html, Redirect};
 use axum::routing::get;
 use axum::{headers::Host, TypedHeader};
@@ -319,7 +323,7 @@ struct AuthRequest {
 async fn authorize_handler(
     Query(query): Query<AuthorizeQuery>,
     State(state): State<SharedState>,
-) -> Redirect {
+) -> std::result::Result<Redirect, StatusCode> {
     let req = AuthRequest {
         id: uuid::Uuid::new_v4(),
         code_challenge: query.code_challenge,
@@ -333,7 +337,7 @@ async fn authorize_handler(
             if &client.id == &query.client_id {
                 realm.requests.push(req);
                 let realm_login_url = format!("/{}/login", &realm.name);
-                return Redirect::to(&realm_login_url);
+                return Ok(Redirect::to(&realm_login_url));
             }
         }
     }
@@ -342,11 +346,11 @@ async fn authorize_handler(
         if &client.id == &query.client_id {
             state.write().unwrap().master_realm.requests.push(req);
             let realm_login_url = format!("/{}/login", &state.read().unwrap().master_realm.name);
-            return Redirect::to(&realm_login_url);
+            return Ok(Redirect::to(&realm_login_url));
         }
     }
 
-    Redirect::to("/misconfiguration")
+    Err(StatusCode::UNAUTHORIZED)
 }
 
 fn login_form(cx: Scope) -> Element {
