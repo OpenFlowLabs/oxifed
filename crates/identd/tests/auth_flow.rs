@@ -30,7 +30,7 @@ fn init_logging() {
     });
 }
 
-fn setup_server() -> Result<()> {
+async fn setup_server() -> Result<()> {
     init_logging();
     let keys_dir: PathBuf = testdir!();
     let mut rng = rand::thread_rng();
@@ -49,7 +49,9 @@ fn setup_server() -> Result<()> {
         pem_file.write_all(pem_key.as_bytes())?;
     }
 
-    let server = identd::ServerState::new(cfg)?;
+    let conn = cfg.open_db_conn().await?;
+
+    let server = identd::ServerState::new(cfg, conn)?;
     tracing::debug!("listening on localhost:4200");
     tokio::spawn(async move {
         identd::listen(server).await.unwrap();
@@ -61,7 +63,7 @@ fn setup_callback_server() {}
 
 #[tokio::test]
 async fn test_discovery() -> Result<()> {
-    setup_server()?;
+    setup_server().await?;
     let _provider_metadata = CoreProviderMetadata::discover_async(
         IssuerUrl::new("http://localhost:4200".to_string())?,
         async_http_client,
@@ -73,7 +75,7 @@ async fn test_discovery() -> Result<()> {
 
 #[tokio::test]
 async fn test_pkce() -> Result<()> {
-    setup_server()?;
+    setup_server().await?;
     let provider_metadata = CoreProviderMetadata::discover_async(
         IssuerUrl::new("http://localhost:4200".to_string())?,
         async_http_client,

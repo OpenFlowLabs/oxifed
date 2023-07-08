@@ -1,6 +1,6 @@
-mod user;
+pub mod migration;
+pub mod user;
 
-use crate::user::*;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, Redirect};
@@ -17,12 +17,14 @@ use openidconnect::{
     AuthUrl, EmptyAdditionalProviderMetadata, IssuerUrl, JsonWebKeyId, JsonWebKeySetUrl,
     PrivateSigningKey, ResponseTypes, TokenUrl, UserInfoUrl,
 };
+use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
+use tokio::sync::Mutex;
 use url::Url;
 
 #[derive(Debug, Error, Diagnostic)]
@@ -50,6 +52,15 @@ pub enum Error {
 
     #[error("could not open key of realm {0}")]
     CouldNotOpenRealmKey(String),
+
+    #[error(transparent)]
+    DeserializeError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    BCrypt(#[from] bcrypt::BcryptError),
+
+    #[error(transparent)]
+    DBErr(#[from] sea_orm::DbErr),
 }
 
 pub type Result<T> = miette::Result<T, Error>;
@@ -61,6 +72,7 @@ pub struct ServerConfig {
     pub use_ssl: bool,
     pub realm_keys_base_path: PathBuf,
     pub realms: Vec<ConfigRealm>,
+    pub db_url: String,
 }
 
 impl Default for ServerConfig {
@@ -71,7 +83,16 @@ impl Default for ServerConfig {
             use_ssl: false,
             realm_keys_base_path: Path::new("keys").to_path_buf(),
             realms: vec![],
+            db_url: String::from("sqlite://identd.db?mode=rwc"),
         }
+    }
+}
+
+impl ServerConfig {
+    pub async fn open_db_conn(&self) -> Result<DatabaseConnection> {
+        let conn = Database::connect(&self.db_url).await?;
+
+        Ok(conn)
     }
 }
 
@@ -202,9 +223,10 @@ pub struct ServerState {
     addr: String,
     realms: Vec<Realm>,
     master_realm: Realm,
+    db: DatabaseConnection,
 }
 
-type SharedState = Arc<RwLock<ServerState>>;
+type SharedState = Arc<Mutex<ServerState>>;
 
 fn helper_get_scheme_from_config(use_ssl: bool) -> &'static str {
     if use_ssl {
@@ -215,7 +237,7 @@ fn helper_get_scheme_from_config(use_ssl: bool) -> &'static str {
 }
 
 impl ServerState {
-    pub fn new(config: ServerConfig) -> Result<Self> {
+    pub fn new(config: ServerConfig, conn: DatabaseConnection) -> Result<Self> {
         let realms = config
             .realms
             .iter()
@@ -244,11 +266,13 @@ impl ServerState {
                 }],
                 config.realm_keys_base_path.clone(),
             )?,
+            db: conn,
         })
     }
 }
 
 pub async fn listen(server: ServerState) -> Result<()> {
+    let addr = server.addr.clone();
     let app = Router::new()
         .route(
             "/.well-known/openid-configuration",
@@ -261,9 +285,9 @@ pub async fn listen(server: ServerState) -> Result<()> {
             get(get_realm_login_form).post(post_realm_login),
         )
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(Arc::new(RwLock::new(server.clone())));
+        .with_state(Arc::new(Mutex::new(server)));
 
-    axum::Server::try_bind(&server.addr.parse()?)
+    axum::Server::try_bind(&addr.parse()?)
         .map_err(|e| Error::HyperError(e.to_string()))?
         .serve(app.into_make_service())
         .await
@@ -275,26 +299,26 @@ async fn openid_discover_handler(
     State(state): State<SharedState>,
     TypedHeader(host): TypedHeader<Host>,
 ) -> Json<CoreProviderMetadata> {
-    for realm in state.read().unwrap().realms.iter() {
+    for realm in state.lock().await.realms.iter() {
         if &realm.domain == host.hostname() {
             return Json(realm.provider_metadata.clone());
         }
     }
 
-    Json(state.read().unwrap().master_realm.provider_metadata.clone())
+    Json(state.lock().await.master_realm.provider_metadata.clone())
 }
 
 async fn openid_jwks_handler(
     State(state): State<SharedState>,
     TypedHeader(host): TypedHeader<Host>,
 ) -> Json<CoreJsonWebKeySet> {
-    for realm in state.read().unwrap().realms.iter() {
+    for realm in state.lock().await.realms.iter() {
         if &realm.domain == host.hostname() {
             return Json(realm.jwks.clone());
         }
     }
 
-    Json(state.read().unwrap().master_realm.jwks.clone())
+    Json(state.lock().await.master_realm.jwks.clone())
 }
 
 #[derive(Debug, Deserialize)]
@@ -332,7 +356,7 @@ async fn authorize_handler(
         state: query.state,
         nonce: query.nonce,
     };
-    for realm in state.write().unwrap().realms.iter_mut() {
+    for realm in state.lock().await.realms.iter_mut() {
         for client in realm.clients.iter() {
             if &client.id == &query.client_id {
                 realm.requests.push(req);
@@ -342,10 +366,10 @@ async fn authorize_handler(
         }
     }
 
-    for client in state.read().unwrap().master_realm.clients.iter() {
+    for client in state.lock().await.master_realm.clients.iter() {
         if &client.id == &query.client_id {
-            state.write().unwrap().master_realm.requests.push(req);
-            let realm_login_url = format!("/{}/login", &state.read().unwrap().master_realm.name);
+            state.lock().await.master_realm.requests.push(req);
+            let realm_login_url = format!("/{}/login", &state.lock().await.master_realm.name);
             return Ok(Redirect::to(&realm_login_url));
         }
     }
@@ -392,12 +416,26 @@ struct LoginFormData {
     password: String,
 }
 
-async fn post_realm_login(Form(login_form): Form<LoginFormData>) -> Html<String> {
+async fn post_realm_login(
+    State(state): State<SharedState>,
+    axum::extract::Path(realm): axum::extract::Path<String>,
+    Form(login_form): Form<LoginFormData>,
+) -> std::result::Result<Html<String>, StatusCode> {
     tracing::debug!(
         "username: {}, password: {}",
-        login_form.username,
-        login_form.password
+        &login_form.username,
+        &login_form.password
     );
 
-    Html(String::from("<div>Success</div>"))
+    let db = &state.lock().await.db;
+
+    use crate::user::user::Entity as User;
+
+    let user: Option<user::user::Model> = User::find()
+        .filter(user::user::Column::RealmId.contains(&realm))
+        .one(db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Html(String::from("<div>Success</div>")))
 }
