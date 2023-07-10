@@ -6,6 +6,9 @@ use rsa::{
 use std::io::Write;
 use std::{fs::File, path::Path};
 
+//#[derive(Parser)]
+struct Args {}
+
 fn main() -> Result<()> {
     let mut rng = rand::thread_rng();
     let bits = 4096;
