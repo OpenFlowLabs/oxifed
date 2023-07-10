@@ -12,6 +12,10 @@ use axum::{Form, Json, Router};
 use base64::{engine::general_purpose, Engine as _};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Utc;
+use deadpool_lapin::Pool;
+use futures::{join, StreamExt};
+use lapin::message::Delivery;
+use lapin::{options::*, types::FieldTable};
 use miette::Diagnostic;
 use openidconnect::core::{
     CoreClaimName, CoreGenderClaim, CoreIdToken, CoreIdTokenClaims, CoreJsonWebKeySet,
@@ -29,6 +33,7 @@ use reqwest::header::ToStrError;
 use sea_orm::*;
 use sea_orm_migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -36,7 +41,10 @@ use std::sync::Arc;
 use tera::Context;
 use thiserror::Error;
 use tokio::sync::Mutex;
+
 use url::Url;
+
+const ADMIN_QUEUE_NAME: &str = "identd.admin";
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
@@ -84,6 +92,9 @@ pub enum Error {
 
     #[error(transparent)]
     JWTError(#[from] jwt_simple::Error),
+
+    #[error(transparent)]
+    RMQ(#[from] lapin::Error),
 
     #[error("{0}")]
     ErrorValue(String),
@@ -157,6 +168,7 @@ pub type Result<T> = miette::Result<T, Error>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ServerConfig {
+    pub amqp_url: String,
     pub listen_addr: String,
     pub domain: String,
     pub use_ssl: bool,
@@ -169,6 +181,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
+            amqp_url: String::from("amqp://dev:dev@172.18.0.2:5672/master"),
             listen_addr: String::from("127.0.0.1:4200"),
             domain: String::from("localhost:4200"),
             use_ssl: false,
@@ -234,6 +247,7 @@ pub struct ServerState {
     keys_path: PathBuf,
     realm_db: DatabaseConnection,
     db: DatabaseConnection,
+    mq_pool: deadpool_lapin::Pool,
 }
 
 type SharedState = Arc<Mutex<ServerState>>;
@@ -258,6 +272,13 @@ impl ServerState {
 
         RealmMigrator::up(&realm_db, None).await?;
 
+        let mut pool_config = deadpool_lapin::Config::default();
+        pool_config.url = Some(config.amqp_url.clone());
+
+        let mq_pool = pool_config
+            .create_pool(Some(deadpool_lapin::Runtime::Tokio1))
+            .map_err(|e| Error::ErrorValue(e.to_string()))?;
+
         for cfg_realm in config.realms.iter() {
             let domain_or_default = cfg_realm
                 .domain
@@ -279,6 +300,7 @@ impl ServerState {
             keys_path: config.realm_keys_base_path.clone(),
             realm_db,
             db,
+            mq_pool,
         })
     }
 
@@ -437,14 +459,175 @@ pub async fn listen(server: ServerState) -> Result<()> {
         )
         .route("/:realm/token", post(token_endpoint))
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(Arc::new(Mutex::new(server)));
+        .with_state(Arc::new(Mutex::new(server.clone())));
 
-    axum::Server::try_bind(&addr.parse()?)
-        .map_err(|e| Error::HyperError(e.to_string()))?
-        .serve(app.into_make_service())
-        .await
-        .map_err(|e| Error::HyperError(e.to_string()))?;
+    let _ = join!(
+        axum::Server::try_bind(&addr.parse()?)
+            .map_err(|e| Error::HyperError(e.to_string()))?
+            .serve(app.into_make_service()),
+        rmq_listen(server.mq_pool.clone(), server.db.clone())
+    );
     Ok(())
+}
+
+async fn rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> {
+    let mut retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+    loop {
+        retry_interval.tick().await;
+        println!("connecting rmq consumer...");
+        match init_rmq_listen(pool.clone(), user_db.clone()).await {
+            Ok(_) => println!("rmq listen returned"),
+            Err(e) => eprintln!("rmq listen had an error: {}", e),
+        };
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AdminMessage {
+    CreateUser {
+        username: String,
+        password: String,
+        email: String,
+        realm_id: String,
+        attributes: Option<HashMap<String, String>>,
+    },
+    UpdateUser {
+        username: String,
+        password: Option<String>,
+        email: Option<String>,
+        attributes: Option<HashMap<String, String>>,
+    },
+    DeleteUser {
+        username: String,
+    },
+}
+
+async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> {
+    let rmq_con = pool
+        .get()
+        .await
+        .map_err(|e| Error::ErrorValue(e.to_string()))?;
+    let channel = rmq_con.create_channel().await?;
+
+    let queue = channel
+        .queue_declare(
+            ADMIN_QUEUE_NAME,
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+    println!("Declared queue {:?}", queue);
+
+    let mut consumer = channel
+        .basic_consume(
+            ADMIN_QUEUE_NAME,
+            "admin.consumer",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+
+    println!("rmq consumer connected, waiting for messages");
+    while let Some(delivery) = consumer.next().await {
+        if let Ok(delivery) = delivery {
+            let tag = delivery.delivery_tag.clone();
+            match handle_admin_message(&user_db, delivery).await {
+                Ok(_) => channel.basic_ack(tag, BasicAckOptions::default()).await?,
+                Err(err) => {
+                    tracing::error!(error = err.to_string(), "failed to handle message");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) -> Result<()> {
+    let msg: AdminMessage = serde_json::from_slice(&delivery.data)?;
+    use user::user::Column;
+    use user::user::{ActiveModel as Model, Entity as UserEntity};
+    match msg {
+        AdminMessage::CreateUser {
+            username,
+            password,
+            email,
+            realm_id,
+            attributes,
+        } => {
+            let hashed = hash(password, DEFAULT_COST)?;
+            let attrs = if let Some(attrs) = attributes {
+                Some(serde_json::to_string(&attrs)?)
+            } else {
+                None
+            };
+            let new_user = Model {
+                id: ActiveValue::Set(uuid::Uuid::new_v4().as_hyphenated().to_string()),
+                username: ActiveValue::Set(username),
+                realm_id: ActiveValue::Set(realm_id),
+                email: ActiveValue::Set(email),
+                pwhash: ActiveValue::Set(hashed),
+                attributes: ActiveValue::Set(attrs),
+            };
+            new_user.insert(user_db).await?;
+            Ok(())
+        }
+        AdminMessage::UpdateUser {
+            username,
+            password,
+            email,
+            attributes,
+        } => {
+            let user = UserEntity::find()
+                .filter(Column::Username.eq(username))
+                .one(user_db)
+                .await?;
+            if let Some(user) = user {
+                let cloned_attrs = user.attributes.clone();
+                let mut mod_user = user.into_active_model();
+                if let Some(password) = password {
+                    let hashed = hash(password, DEFAULT_COST)?;
+                    mod_user.pwhash = ActiveValue::Set(hashed);
+                }
+
+                if let Some(email) = email {
+                    mod_user.email = ActiveValue::Set(email);
+                }
+
+                if let Some(attributes) = attributes {
+                    let updated_attributes = if let Some(cur_raw_attrs) = cloned_attrs {
+                        let mut currents_attrs: HashMap<String, String> =
+                            serde_json::from_str(&cur_raw_attrs)?;
+                        for (key, val) in attributes {
+                            currents_attrs.insert(key, val);
+                        }
+                        currents_attrs
+                    } else {
+                        attributes
+                    };
+                    let updated_str = serde_json::to_string(&updated_attributes)?;
+                    mod_user.attributes = ActiveValue::Set(Some(updated_str));
+                }
+
+                mod_user.update(user_db).await?;
+
+                Ok(())
+            } else {
+                Err(Error::NotFound(String::from("no user with username")))
+            }
+        }
+        AdminMessage::DeleteUser { username } => {
+            let user = UserEntity::find()
+                .filter(Column::Username.eq(username))
+                .one(user_db)
+                .await?;
+            if let Some(user) = user {
+                user.delete(user_db).await?;
+                Ok(())
+            } else {
+                Err(Error::NotFound(String::from("no user with username")))
+            }
+        }
+    }
 }
 
 async fn openid_discover_handler(
