@@ -43,5 +43,4 @@ enum User {
     Pwhash,
     RealmId,
     Attributes,
-    Permissions,
 }
