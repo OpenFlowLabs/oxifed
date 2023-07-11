@@ -9,6 +9,9 @@ services:
       RABBITMQ_DEFAULT_PASS: "dev"
     volumes:
       - rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 8090:15672
+      - 8080:5672
 
 
 volumes:
