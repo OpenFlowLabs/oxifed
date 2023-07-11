@@ -181,7 +181,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            amqp_url: String::from("amqp://dev:dev@172.18.0.2:5672/master"),
+            amqp_url: String::from("amqp://dev:dev@127.0.0.1:5672/master"),
             listen_addr: String::from("127.0.0.1:4200"),
             domain: String::from("localhost:4200"),
             use_ssl: false,
@@ -474,10 +474,10 @@ async fn rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> {
     let mut retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
     loop {
         retry_interval.tick().await;
-        println!("connecting rmq consumer...");
+        tracing::info!("connecting rmq consumer...");
         match init_rmq_listen(pool.clone(), user_db.clone()).await {
-            Ok(_) => println!("rmq listen returned"),
-            Err(e) => eprintln!("rmq listen had an error: {}", e),
+            Ok(_) => tracing::info!("rmq listen returned"),
+            Err(e) => tracing::error!(error=e.to_string(), "rmq listen had an error"),
         };
     }
 }
@@ -516,7 +516,7 @@ async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> 
             FieldTable::default(),
         )
         .await?;
-    println!("Declared queue {:?}", queue);
+    tracing::info!("Declared queue {:?}", queue);
 
     let mut consumer = channel
         .basic_consume(
@@ -527,7 +527,7 @@ async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> 
         )
         .await?;
 
-    println!("rmq consumer connected, waiting for messages");
+    tracing::info!("rmq consumer connected, waiting for messages");
     while let Some(delivery) = consumer.next().await {
         if let Ok(delivery) = delivery {
             let tag = delivery.delivery_tag.clone();
@@ -546,6 +546,7 @@ async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) 
     let msg: AdminMessage = serde_json::from_slice(&delivery.data)?;
     use user::user::Column;
     use user::user::{ActiveModel as Model, Entity as UserEntity};
+    tracing::debug!("received message {:?}, processing.", msg);
     match msg {
         AdminMessage::CreateUser {
             username,
@@ -568,6 +569,7 @@ async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) 
                 pwhash: ActiveValue::Set(hashed),
                 attributes: ActiveValue::Set(attrs),
             };
+            tracing::debug!("Inserting user: {:?}", new_user);
             new_user.insert(user_db).await?;
             Ok(())
         }
@@ -608,6 +610,7 @@ async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) 
                     mod_user.attributes = ActiveValue::Set(Some(updated_str));
                 }
 
+                tracing::debug!("Updating user to: {:?}", mod_user);
                 mod_user.update(user_db).await?;
 
                 Ok(())
@@ -621,6 +624,7 @@ async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) 
                 .one(user_db)
                 .await?;
             if let Some(user) = user {
+                tracing::debug!("deleting user {:?}", user);
                 user.delete(user_db).await?;
                 Ok(())
             } else {

@@ -11,7 +11,7 @@ services:
       - rabbitmq:/var/lib/rabbitmq
     ports:
       - 8090:15672
-      - 8080:5672
+      - 5672:5672
 
 
 volumes:
