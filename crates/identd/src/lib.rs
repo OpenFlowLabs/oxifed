@@ -12,9 +12,10 @@ use axum::{Form, Json, Router};
 use base64::{engine::general_purpose, Engine as _};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Utc;
+use config::{Config, Environment};
 use deadpool_lapin::Pool;
 use futures::{join, StreamExt};
-use lapin::message::Delivery;
+use lapin::BasicProperties;
 use lapin::{options::*, types::FieldTable};
 use miette::Diagnostic;
 use openidconnect::core::{
@@ -44,7 +45,7 @@ use tokio::sync::Mutex;
 
 use url::Url;
 
-const ADMIN_QUEUE_NAME: &str = "identd.admin";
+pub const ADMIN_QUEUE_NAME: &str = "identd.admin";
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
@@ -111,6 +112,9 @@ pub enum Error {
     #[error(transparent)]
     JsonWebTokenError(#[from] openidconnect::JsonWebTokenError),
 
+    #[error(transparent)]
+    ConfigError(#[from] config::ConfigError),
+
     #[error("unautorized")]
     Unauthorized,
 
@@ -173,7 +177,7 @@ pub struct ServerConfig {
     pub domain: String,
     pub use_ssl: bool,
     pub realm_keys_base_path: PathBuf,
-    pub realms: Vec<ConfigRealm>,
+    pub realms: Option<Vec<ConfigRealm>>,
     pub db_url: String,
     pub realm_db_url: String,
 }
@@ -186,7 +190,7 @@ impl Default for ServerConfig {
             domain: String::from("localhost:4200"),
             use_ssl: false,
             realm_keys_base_path: Path::new("keys").to_path_buf(),
-            realms: vec![],
+            realms: None,
             db_url: String::from("sqlite://identd.db?mode=rwc"),
             realm_db_url: String::from("sqlite://"),
         }
@@ -214,10 +218,33 @@ impl ServerConfig {
             Ok(conn)
         }
     }
+
+    pub fn new(config_file: Option<String>) -> Result<Self> {
+        let mut cfg = Config::builder()
+            .add_source(config::File::with_name("/etc/identd.toml").required(false))
+            .add_source(config::File::with_name("identd.toml").required(false));
+
+        if let Some(path) = config_file {
+            cfg = cfg.add_source(config::File::with_name(&path));
+        }
+
+        cfg = cfg.add_source(Environment::with_prefix("identd"));
+        cfg = cfg.set_default("amqp_url", "amqp://dev:dev@172.18.0.2:5672/master")?;
+        cfg = cfg.set_default("listen_addr", "127.0.0.1:4200")?;
+        cfg = cfg.set_default("domain", "localhost:4200")?;
+        cfg = cfg.set_default("use_ssl", false)?;
+        cfg = cfg.set_default("realm_keys_base_path", "keys")?;
+        cfg = cfg.set_default("db_url", "sqlite://identd.db?mode=rwc")?;
+        cfg = cfg.set_default("realm_db_url", "sqlite://")?;
+
+        let s = cfg.build()?;
+
+        Ok(s.try_deserialize()?)
+    }
 }
 
 // A realm as it is in the config file
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ConfigRealm {
     pub name: String,
     pub domain: Option<String>,
@@ -279,20 +306,19 @@ impl ServerState {
             .create_pool(Some(deadpool_lapin::Runtime::Tokio1))
             .map_err(|e| Error::ErrorValue(e.to_string()))?;
 
-        for cfg_realm in config.realms.iter() {
-            let domain_or_default = cfg_realm
-                .domain
-                .clone()
-                .unwrap_or(String::from("localhost:4200"));
-            Self::create_realm(
-                &realm_db,
-                &cfg_realm.name,
-                &domain_or_default,
-                helper_get_scheme_from_config(config.use_ssl),
-                cfg_realm.clients.clone(),
-                &config.realm_keys_base_path,
-            )
-            .await?;
+        if let Some(realms) = config.realms.clone() {
+            for cfg_realm in realms.iter() {
+                let domain_or_default = cfg_realm.domain.clone().unwrap_or(config.domain.clone());
+                Self::create_realm(
+                    &realm_db,
+                    &cfg_realm.name,
+                    &domain_or_default,
+                    helper_get_scheme_from_config(config.use_ssl),
+                    cfg_realm.clients.clone(),
+                    &config.realm_keys_base_path,
+                )
+                .await?;
+            }
         }
 
         Ok(Self {
@@ -502,6 +528,21 @@ pub enum AdminMessage {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AdminResponse {
+    Success,
+    Error { message: String },
+}
+
+impl std::fmt::Display for AdminResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AdminResponse::Success => write!(f, "success"),
+            AdminResponse::Error { message } => write!(f, "{}", message),
+        }
+    }
+}
+
 async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> {
     let rmq_con = pool
         .get()
@@ -530,11 +571,42 @@ async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> 
     tracing::info!("rmq consumer connected, waiting for messages");
     while let Some(delivery) = consumer.next().await {
         if let Ok(delivery) = delivery {
-            let tag = delivery.delivery_tag.clone();
-            match handle_admin_message(&user_db, delivery).await {
-                Ok(_) => channel.basic_ack(tag, BasicAckOptions::default()).await?,
+            match handle_admin_message(&user_db, delivery.data.as_slice()).await {
+                Ok(_) => {
+                    if let Some(reply_queue) = delivery.properties.reply_to() {
+                        let err_msg = AdminResponse::Success;
+                        let err_payload = serde_json::to_vec(&err_msg)?;
+                        channel
+                            .basic_publish(
+                                "",
+                                reply_queue.as_str(),
+                                BasicPublishOptions::default(),
+                                &err_payload,
+                                BasicProperties::default(),
+                            )
+                            .await?;
+                    }
+
+                    delivery.ack(BasicAckOptions::default()).await?
+                }
                 Err(err) => {
                     tracing::error!(error = err.to_string(), "failed to handle message");
+                    if let Some(reply_queue) = delivery.properties.reply_to() {
+                        let err_msg = AdminResponse::Error {
+                            message: err.to_string(),
+                        };
+                        let err_payload = serde_json::to_vec(&err_msg)?;
+                        channel
+                            .basic_publish(
+                                "",
+                                reply_queue.as_str(),
+                                BasicPublishOptions::default(),
+                                &err_payload,
+                                BasicProperties::default(),
+                            )
+                            .await?;
+                    }
+                    delivery.ack(BasicAckOptions::default()).await?;
                 }
             }
         }
@@ -542,8 +614,8 @@ async fn init_rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> 
     Ok(())
 }
 
-async fn handle_admin_message(user_db: &DatabaseConnection, delivery: Delivery) -> Result<()> {
-    let msg: AdminMessage = serde_json::from_slice(&delivery.data)?;
+async fn handle_admin_message(user_db: &DatabaseConnection, data: &[u8]) -> Result<()> {
+    let msg: AdminMessage = serde_json::from_slice(data)?;
     use user::user::Column;
     use user::user::{ActiveModel as Model, Entity as UserEntity};
     tracing::debug!("received message {:?}, processing.", msg);

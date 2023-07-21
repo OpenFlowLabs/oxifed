@@ -9,6 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 struct Args {
     #[command(subcommand)]
     command: Commands,
+    config: Option<String>,
 }
 
 #[derive(Debug, Subcommand, Clone, Default)]
@@ -23,6 +24,7 @@ pub enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+    let cfg = ServerConfig::new(args.config)?;
     match args.command {
         Commands::Start => {
             tracing_subscriber::registry()
@@ -35,7 +37,7 @@ async fn main() -> Result<()> {
                 )
                 .with(tracing_subscriber::fmt::layer())
                 .init();
-            let cfg = ServerConfig::default();
+
             let server = ServerState::new(&cfg).await?;
 
             identd::listen(server).await
@@ -53,7 +55,7 @@ async fn main() -> Result<()> {
                 .with(tracing_subscriber::fmt::layer())
                 .init();
             tracing::info!("Starting migrations by manual command");
-            let cfg = ServerConfig::default();
+
             tracing::info!("Connecting to database URL: {}", &cfg.db_url);
             let conn = cfg.open_db_conn().await?;
             tracing::debug!("Mark: Staring migration; connection was sucessfull");
@@ -73,8 +75,7 @@ async fn main() -> Result<()> {
                 )
                 .with(tracing_subscriber::fmt::layer())
                 .init();
-            tracing::info!("Starting migrations by manual command");
-            let cfg = ServerConfig::default();
+
             tracing::info!("Connecting to database URL: sqlite://realms.db?mode=rwc");
             let conn = cfg
                 .open_realm_db_conn(Some(String::from("realms.db")))

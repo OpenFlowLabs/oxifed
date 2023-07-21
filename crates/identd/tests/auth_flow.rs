@@ -56,7 +56,7 @@ async fn setup_server() -> Result<()> {
 
     cfg.db_url = String::from("sqlite://");
 
-    cfg.realms.push(identd::ConfigRealm {
+    let master_realm = identd::ConfigRealm {
         name: String::from("master"),
         domain: None,
         clients: vec![identd::Client::new(
@@ -64,7 +64,14 @@ async fn setup_server() -> Result<()> {
             None,
             "https://localhost:4300/callback",
         )],
-    });
+    };
+
+    if let Some(mut realms) = cfg.realms.clone() {
+        realms.push(master_realm);
+        cfg.realms = Some(realms);
+    } else {
+        cfg.realms = Some(vec![master_realm])
+    }
 
     let server = identd::ServerState::new(&cfg).await?;
 

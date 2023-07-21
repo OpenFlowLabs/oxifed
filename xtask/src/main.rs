@@ -1,6 +1,6 @@
 mod identd;
 
-use std::{path::Path, thread};
+use std::thread;
 
 use ::identd::ServerConfig;
 use clap::{Parser, Subcommand};
@@ -44,13 +44,7 @@ fn main() -> miette::Result<()> {
 }
 
 fn test_init() -> miette::Result<()> {
-    let cfg = ServerConfig {
-        listen_addr: String::from("127.0.0.1:4200"),
-        domain: String::from("localhost"),
-        use_ssl: false,
-        realm_keys_base_path: Path::new("keys").to_path_buf(),
-        realms: vec![],
-    };
+    let cfg = ServerConfig::default();
     thread::spawn(|| async move {
         crate::identd::run_test_server(cfg).await.unwrap();
     });
