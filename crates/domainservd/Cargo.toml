@@ -11,3 +11,21 @@ license.workspace = true
 categories.workspace = true
 
 [dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+activitypub.workspace = true
+thiserror.workspace = true
+miette.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+config.workspace = true
+webfinger = "0.5.1"
+lapin.workspace = true
+deadpool-lapin = "0.10.0"

@@ -11,3 +11,12 @@ license.workspace = true
 categories.workspace = true
 
 [dependencies]
+miette.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum.workspace = true
+url.workspace = true
+chrono.workspace = true
+activitypub_federation.workspace = true
+serde_with = { version = "3.1.0", features = ["json", "chrono"] }

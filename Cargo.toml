@@ -68,6 +68,8 @@ tower = { version = "0.4.13", features = ["full", "tokio"] }
 reqwest = "0.11.18"
 hyper = { version = "0.14.26", features = ["full"] }
 tower-http = { version = "0.4.1", features = ["tracing", "trace"] }
+activitypub_federation = { version = "0.4.6", default-features = false, features = ["axum"] }
+activitypub = {version ="0.1.0-dev", path = "crates/activitypub"}
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3

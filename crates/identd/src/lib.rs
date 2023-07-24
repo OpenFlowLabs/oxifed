@@ -229,7 +229,7 @@ impl ServerConfig {
         }
 
         cfg = cfg.add_source(Environment::with_prefix("identd"));
-        cfg = cfg.set_default("amqp_url", "amqp://dev:dev@172.18.0.2:5672/master")?;
+        cfg = cfg.set_default("amqp_url", "amqp://dev:dev@localhost:5672/master")?;
         cfg = cfg.set_default("listen_addr", "127.0.0.1:4200")?;
         cfg = cfg.set_default("domain", "localhost:4200")?;
         cfg = cfg.set_default("use_ssl", false)?;
@@ -503,7 +503,7 @@ async fn rmq_listen(pool: Pool, user_db: DatabaseConnection) -> Result<()> {
         tracing::info!("connecting rmq consumer...");
         match init_rmq_listen(pool.clone(), user_db.clone()).await {
             Ok(_) => tracing::info!("rmq listen returned"),
-            Err(e) => tracing::error!(error=e.to_string(), "rmq listen had an error"),
+            Err(e) => tracing::error!(error = e.to_string(), "rmq listen had an error"),
         };
     }
 }
