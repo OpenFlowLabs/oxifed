@@ -10,6 +10,8 @@ use serde_json::Value;
 use serde_with::skip_serializing_none;
 use url::Url;
 
+pub const PUBLIC_ACTOR_URL: &str = "";
+
 /// Public key of actors which is used for HTTP signatures.
 ///
 /// This needs to be federated in the `public_key` field of all actors.
@@ -42,14 +44,14 @@ pub fn main_key_id(owner: &Url) -> String {
     format!("{}#main-key", &owner)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum Context {
     Single(KnownContext),
     List(Vec<KnownContext>),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum KnownContext {
     #[serde(rename = "https://www.w3.org/ns/activitystreams")]
     ActivityStreams,
