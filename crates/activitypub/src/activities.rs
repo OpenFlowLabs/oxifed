@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(untagged)]
 pub enum Activity {
     Create(Create),
     Follow(Follow),
@@ -12,9 +12,15 @@ pub enum Activity {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum CreateType {
+    Create,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Create {
     pub context: Context,
     pub id: Url,
+    #[serde(rename = "type")]
+    pub kind: CreateType,
     pub actor: Url,
     pub published: chrono::NaiveDateTime,
     pub to: Vec<Url>,
@@ -23,9 +29,15 @@ pub struct Create {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum FollowType {
+    Follow,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Follow {
     pub context: Context,
     pub id: Url,
+    #[serde(rename = "type")]
+    pub kind: FollowType,
     pub actor: Url,
     #[serde(deserialize_with = "deserialize_skip_error", default)]
     pub to: Option<[Url; 1]>,
@@ -33,9 +45,15 @@ pub struct Follow {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AcceptType {
+    Accept,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Accept {
     pub context: Context,
     pub id: Url,
+    #[serde(rename = "type")]
+    pub kind: AcceptType,
     pub actor: Url,
     #[serde(deserialize_with = "deserialize_skip_error", default)]
     pub to: Option<[Url; 1]>,
