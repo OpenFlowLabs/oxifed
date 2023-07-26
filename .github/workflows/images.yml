@@ -17,12 +17,19 @@ jobs:
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       -
+        name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+      -
         name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: openflowlabs/oxifed/identd:${{  github.ref_name }}
+          tags: ghcr.io/openflowlabs/oxifed/identd:${{  github.ref_name }}
           file: crates/identd/Dockerfile
       -
         name: Build and push
@@ -30,5 +37,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: openflowlabs/oxifed/domainservd:${{  github.ref_name }}
+          tags: ghcr.io/openflowlabs/oxifed/domainservd:${{  github.ref_name }}
           file: crates/domainservd/Dockerfile
