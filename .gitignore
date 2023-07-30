@@ -1,3 +1,4 @@
 .env
 target
 identd.db
+sample_data

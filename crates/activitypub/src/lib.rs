@@ -1,13 +1,18 @@
 pub mod activities;
+pub mod collection;
+
+use std::collections::HashMap;
 
 use activitypub_federation::protocol::{
     helpers::{deserialize_one_or_many, deserialize_skip_error},
     values::{MediaTypeMarkdown, MediaTypeMarkdownOrHtml},
 };
 use chrono::{DateTime, FixedOffset};
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::skip_serializing_none;
+use thiserror::Error;
 use url::Url;
 
 pub const PUBLIC_ACTOR_URL: &str = "";
@@ -52,6 +57,7 @@ pub enum Context {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
 pub enum KnownContext {
     #[serde(rename = "https://www.w3.org/ns/activitystreams")]
     ActivityStreams,
@@ -59,6 +65,7 @@ pub enum KnownContext {
     SecurityV1,
     #[serde(rename = "@language")]
     Language(String),
+    Embedded(HashMap<String, Value>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -86,7 +93,7 @@ pub struct ImageObject {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoints {
-    pub shared_inbox: Url,
+    pub shared_inbox: Option<String>,
 }
 
 #[skip_serializing_none]
@@ -156,7 +163,7 @@ pub struct Note {
     // lemmy extension
     pub distinguished: Option<bool>,
     pub language: Option<LanguageTag>,
-    pub audience: Option<Url>,
+    pub audience: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -190,8 +197,8 @@ pub const SHARED_INBOX_FORMAT: &str = "{}/inbox";
 pub struct PersonActor {
     pub id: Url,
     pub inbox: Url,
-    pub outbox: Url,
-    pub endpoints: Vec<Endpoint>,
+    pub outbox: Option<String>,
+    pub endpoints: Option<Vec<Endpoint>>,
     pub preferred_username: String,
     pub public_key: PublicKey,
 }
@@ -203,12 +210,14 @@ impl PersonActor {
             inbox: format!("{}/actors/{}/inbox", domain, username)
                 .parse()
                 .unwrap(),
-            outbox: format!("{}/actors/{}/outbox", domain, username)
-                .parse()
-                .unwrap(),
-            endpoints: vec![Endpoint {
-                shared_inbox: format!("{}/inbox", domain).parse().unwrap(),
-            }],
+            outbox: Some(
+                format!("{}/actors/{}/outbox", domain, username)
+                    .parse()
+                    .unwrap(),
+            ),
+            endpoints: Some(vec![Endpoint {
+                shared_inbox: Some(format!("{}/inbox", domain).parse().unwrap()),
+            }]),
             preferred_username: username.clone().to_owned(),
             public_key,
         }
@@ -218,5 +227,58 @@ impl PersonActor {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
-    shared_inbox: Url,
+    shared_inbox: Option<Url>,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum Error {
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    IntoHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
+
+    #[error(transparent)]
+    IntoHeaderName(#[from] reqwest::header::InvalidHeaderName),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub async fn fetch_actor(url: Url) -> Result<Actors> {
+    Ok(reqwest::get(url).await?.json::<Actors>().await?)
+}
+
+pub async fn get_inbox(actor: &Actors, return_shared: bool) -> Url {
+    match actor {
+        Actors::Person(person) => {
+            if !return_shared {
+                return person.inbox.clone();
+            }
+
+            if let Some(endps) = &person.endpoints {
+                for endp in endps {
+                    if let Some(sibx) = &endp.shared_inbox {
+                        return sibx.clone();
+                    }
+                }
+                person.inbox.clone()
+            } else {
+                person.inbox.clone()
+            }
+        }
+    }
+}
+
+pub async fn post_to_inbox(inbox: Url, activity: &activities::Activity) -> Result<String> {
+    let activity_value: reqwest::header::HeaderValue = "application/activity+json".parse()?;
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(reqwest::header::CONTENT_TYPE, activity_value.clone());
+    headers.insert(reqwest::header::ACCEPT, activity_value);
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()?;
+
+    let resp = client.post(inbox).json(activity).send().await?;
+
+    Ok(resp.text().await?)
 }

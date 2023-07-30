@@ -1,6 +1,6 @@
 [package]
-name = "activitypub"
-description = "Helpers for activitypub JSON types I care about"
+name = "oxilib"
+description = "Library of internal data structures aused by many daemons and apps"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -15,9 +15,9 @@ miette.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-axum.workspace = true
-url.workspace = true
+lapin.workspace = true
+deadpool-lapin.workspace = true
 chrono.workspace = true
-activitypub_federation.workspace = true
-serde_with = { version = "3.1.0", features = ["json", "chrono"] }
-reqwest.workspace = true
+url.workspace = true
+uuid.workspace = true
+biscuit-auth.workspace = true

@@ -42,8 +42,8 @@ jwt-simple = "0.11.5"
 sha2 = "0.10.7"
 base64 = "0.21.2"
 deadpool-lapin = { version = "0.10.0", features = ["serde"] }
-tokio-amqp = "2.0.0"
-futures = "0.3.28"
+tokio-amqp.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 testdir = {version="0.7.3"}

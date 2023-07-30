@@ -50,6 +50,7 @@ keywords = ["rabbitmq", "activitypub", "server", "email", "webfinger"]
 
 [workspace.dependencies]
 lapin = { version = "2.2.1", default-features = false, features = ["serde_json", "openssl"] }
+deadpool-lapin = "0.10.0"
 axum = { version = "0.6.18", features = ["tracing", "headers"] }
 axum-macros = "0.3.7"
 chrono = { version = "0.4.26", features = ["serde"] }
@@ -70,6 +71,11 @@ hyper = { version = "0.14.26", features = ["full"] }
 tower-http = { version = "0.4.1", features = ["tracing", "trace"] }
 activitypub_federation = { version = "0.4.6", default-features = false, features = ["axum"] }
 activitypub = {version ="0.1.0-dev", path = "crates/activitypub"}
+oxilib = {version = "0.1.0-dev", path= "crates/oxilib"}
+minio = { git = "https://github.com/minio/minio-rs.git", version = "0.1.0" }
+biscuit-auth = { version = "3.2.0", features = ["serde", "uuid"] }
+tokio-amqp = "2.0.0"
+futures = "0.3.28"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3

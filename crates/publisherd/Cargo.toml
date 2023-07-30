@@ -1,6 +1,6 @@
 [package]
-name = "domainservd"
-description = "Endpoint service to host all the endpoints for one domain"
+name = "publisherd"
+description = "Activity publishing daemon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,21 +11,22 @@ license.workspace = true
 categories.workspace = true
 
 [dependencies]
-axum.workspace = true
+miette = { workspace = true, features = ["fancy"] }
+thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-activitypub.workspace = true
-thiserror.workspace = true
-miette = { workspace = true, features = ["fancy"] }
 clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-url.workspace = true
-uuid.workspace = true
 tokio.workspace = true
-tower.workspace = true
-tower-http.workspace = true
 config.workspace = true
-webfinger = "0.5.1"
 lapin.workspace = true
 deadpool-lapin.workspace = true
+minio.workspace = true
+oxilib.workspace = true
+futures.workspace = true
+url.workspace = true
+biscuit-auth.workspace = true
+activitypub = {version ="0.1.0-dev", path = "../activitypub"}
+reqwest.workspace = true
+chrono.workspace = true

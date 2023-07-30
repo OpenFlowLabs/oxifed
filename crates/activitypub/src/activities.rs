@@ -9,6 +9,7 @@ pub enum Activity {
     Create(Create),
     Follow(Follow),
     Accept(Accept),
+    Announce(Announce),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -55,7 +56,24 @@ pub struct Accept {
     #[serde(rename = "type")]
     pub kind: AcceptType,
     pub actor: Url,
-    #[serde(deserialize_with = "deserialize_skip_error", default)]
-    pub to: Option<[Url; 1]>,
+    pub to: Vec<Url>,
     pub object: Follow,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AnnounceType {
+    Announce,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Announce {
+    pub context: Context,
+    pub id: Url,
+    #[serde(rename = "type")]
+    pub kind: AnnounceType,
+    pub actor: Url,
+    #[serde(deserialize_with = "deserialize_skip_error", default)]
+    pub to: Vec<Url>,
+    pub cc: Option<Vec<Url>>,
+    pub object: Url,
 }
