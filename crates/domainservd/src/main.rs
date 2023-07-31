@@ -320,6 +320,21 @@ async fn post_shared_inbox(
                 Err(Error::UnknownUser)
             }
         }
+        Activity::Announce(activity) => {
+            let mut activity = activity.clone();
+            activity.to = filter_recipients(&accounts, &activity.to);
+
+            if let Some(cc) = &activity.cc {
+                activity.cc = Some(filter_recipients(&accounts, &cc));
+            }
+
+            if activity.to.len() > 0 {
+                queue_activity(state, activity, INBOX_RECEIVE_QUEUE).await?;
+                Ok(StatusCode::CREATED)
+            } else {
+                Err(Error::UnknownUser)
+            }
+        }
     }
 }
 
@@ -375,6 +390,21 @@ async fn post_inbox(
             Activity::Accept(accept) => {
                 if accounts.contains(&accept.object.actor.to_string()) {
                     queue_activity(state, accept, INBOX_RECEIVE_QUEUE).await?;
+                    Ok(StatusCode::CREATED)
+                } else {
+                    Err(Error::UnknownUser)
+                }
+            }
+            Activity::Announce(activity) => {
+                let mut activity = activity.clone();
+                activity.to = filter_recipients(&accounts, &activity.to);
+
+                if let Some(cc) = &activity.cc {
+                    activity.cc = Some(filter_recipients(&accounts, &cc));
+                }
+
+                if activity.to.len() > 0 {
+                    queue_activity(state, activity, INBOX_RECEIVE_QUEUE).await?;
                     Ok(StatusCode::CREATED)
                 } else {
                     Err(Error::UnknownUser)

@@ -30,7 +30,7 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/openflowlabs/oxifed/identd:${{  github.ref_name }}
-          file: crates/identd/Dockerfile
+          build-args: "PACKAGE=identd"
       -
         name: Build and push
         uses: docker/build-push-action@v4
@@ -38,4 +38,12 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/openflowlabs/oxifed/domainservd:${{  github.ref_name }}
-          file: crates/domainservd/Dockerfile
+          build-args: "PACKAGE=domainservd"
+      -
+        name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/openflowlabs/oxifed/publisherd:${{  github.ref_name }}          
+          build-args: "PACKAGE=publisherd"
