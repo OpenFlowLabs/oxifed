@@ -9,6 +9,9 @@ on:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ["identd", "domainservd", "publisherd"]
     steps:
       -
         name: Checkout
@@ -29,21 +32,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/openflowlabs/oxifed/identd:${{  github.ref_name }}
-          build-args: "PACKAGE=identd"
-      -
-        name: Build and push
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/openflowlabs/oxifed/domainservd:${{  github.ref_name }}
-          build-args: "PACKAGE=domainservd"
-      -
-        name: Build and push
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/openflowlabs/oxifed/publisherd:${{  github.ref_name }}          
-          build-args: "PACKAGE=publisherd"
+          tags: ghcr.io/openflowlabs/oxifed/${{ matrix.package }}:${{  github.ref_name }}
+          build-args: "PACKAGE=${{ matrix.package }}"
