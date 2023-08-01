@@ -146,15 +146,25 @@ pub async fn listen(cfg: &Config) -> Result<()> {
         .queue_declare(
             &dlx_name,
             QueueDeclareOptions {
+                durable: true,
                 ..Default::default()
             },
             FieldTable::default(),
         )
         .await?;
     tracing::info!("Declared Dead Letter queue {:?}", dlx_queue);
+    tracing::debug!("Defining outbox queue");
+    let queue = channel
+        .queue_declare(
+            oxilib::OUTBOX_EXCHANGE,
+            QueueDeclareOptions {
+                ..Default::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
 
     tracing::debug!("Ensuring outbox exchange exists");
-
     let mut exchange_args = FieldTable::default();
     exchange_args.insert(
         ShortString::from("x-dead-letter-exchange"),
@@ -168,17 +178,6 @@ pub async fn listen(cfg: &Config) -> Result<()> {
                 ..Default::default()
             },
             exchange_args,
-        )
-        .await?;
-
-    tracing::debug!("Defining outbox queue");
-    let queue = channel
-        .queue_declare(
-            oxilib::OUTBOX_EXCHANGE,
-            QueueDeclareOptions {
-                ..Default::default()
-            },
-            FieldTable::default(),
         )
         .await?;
 
