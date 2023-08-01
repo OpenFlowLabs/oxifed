@@ -117,7 +117,7 @@ pub async fn listen(cfg: &Config) -> Result<()> {
         None,
     );
 
-    tracing::debug!("Connected to minio: {}", &cfg.external_minio.url);
+    tracing::debug!("Connected to minio: {}", &cfg.external_s3.url);
     let external_client = minio::s3::client::Client::new(
         external_minio_base_url.clone(),
         Some(&static_external_provider),
