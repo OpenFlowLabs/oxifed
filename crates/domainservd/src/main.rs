@@ -166,7 +166,7 @@ async fn load_config() -> Result<Config> {
         .set_default("domain", "localhost:3001")?
         .set_default("use_ssl", false)?
         .set_default("amqp_url", "amqp://dev:dev@localhost:5672/master")?
-        .add_source(File::with_name("/etc/domainservd.toml").required(false))
+        .add_source(File::with_name("/etc/domainservd/config.yaml").required(false))
         .add_source(File::with_name("domainservd.toml").required(false));
 
     let cfg = builder.build()?;
