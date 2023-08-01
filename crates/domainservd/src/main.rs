@@ -181,7 +181,6 @@ async fn listen(cfg: &Config) -> Result<()> {
         String::from("localhost:3001")
     };
 
-    tracing::debug!("Opening RabbitMQ Connection");
     let mut pool_config = deadpool_lapin::Config::default();
     pool_config.url = Some(cfg.amqp_url.clone());
 
@@ -189,8 +188,10 @@ async fn listen(cfg: &Config) -> Result<()> {
         .create_pool(Some(deadpool_lapin::Runtime::Tokio1))
         .map_err(|e| Error::InternalError(e.to_string()))?;
 
-    tracing::debug!("Defining inbox queue");
+    tracing::debug!("Opening RabbitMQ Connection");
     let channel = mq_pool.get().await?.create_channel().await?;
+
+    tracing::debug!("Defining inbox queue");
     channel
         .queue_declare(
             INBOX_RECEIVE_QUEUE,
