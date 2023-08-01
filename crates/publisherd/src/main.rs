@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-
 use clap::{Parser, Subcommand};
 use publisherd::*;
+use std::path::PathBuf;
+use tracing_subscriber::prelude::*;
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -23,6 +23,16 @@ async fn main() -> Result<()> {
 
     match args.command {
         Commands::Start => {
+            tracing_subscriber::registry()
+                .with(
+                    tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                        // axum logs rejections from built-in extractors with the `axum::rejection`
+                        // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
+                        "publisherd=trace,tower_http=trace,axum::rejection=trace".into()
+                    }),
+                )
+                .with(tracing_subscriber::fmt::layer())
+                .init();
             let cfg = build_config(args.config)?;
             listen(&cfg).await?;
             Ok(())
