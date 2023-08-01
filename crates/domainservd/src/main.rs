@@ -189,9 +189,16 @@ async fn listen(cfg: &Config) -> Result<()> {
         .map_err(|e| Error::InternalError(e.to_string()))?;
 
     tracing::debug!("Opening RabbitMQ Connection");
-    let channel = mq_pool.get().await?.create_channel().await?;
+    let conn = mq_pool.get().await?;
+    tracing::debug!(
+        "Connected to {} as {}",
+        conn.status().vhost(),
+        conn.status().username()
+    );
 
-    tracing::debug!("Defining inbox queue");
+    let channel = conn.create_channel().await?;
+
+    tracing::debug!("Defining inbox queue from channel id {}", channel.id());
     channel
         .queue_declare(
             INBOX_RECEIVE_QUEUE,
