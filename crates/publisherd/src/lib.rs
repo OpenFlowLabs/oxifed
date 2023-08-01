@@ -117,11 +117,13 @@ pub async fn listen(cfg: &Config) -> Result<()> {
         None,
     );
 
+    tracing::debug!("Connected to minio: {}", &cfg.external_minio.url);
     let external_client = minio::s3::client::Client::new(
         external_minio_base_url.clone(),
         Some(&static_external_provider),
     );
 
+    tracing::debug!("Creating outbox bucket if it doesnt exist");
     let outbox_exists = external_client
         .bucket_exists(&BucketExistsArgs::new(OUTBOX_BUCKET_NAME)?)
         .await?;
@@ -132,6 +134,7 @@ pub async fn listen(cfg: &Config) -> Result<()> {
             .await?;
     }
 
+    tracing::debug!("Connecting to RabbitMQ");
     let rmq_con = pool
         .get()
         .await
@@ -139,6 +142,19 @@ pub async fn listen(cfg: &Config) -> Result<()> {
     let channel = rmq_con.create_channel().await?;
 
     let dlx_name = format!("{}.dlx", OUTBOX_EXCHANGE);
+    let dlx_queue = channel
+        .queue_declare(
+            &dlx_name,
+            QueueDeclareOptions {
+                ..Default::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
+    tracing::info!("Declared Dead Letter queue {:?}", dlx_queue);
+
+    tracing::debug!("Ensuring outbox exchange exists");
+
     let mut exchange_args = FieldTable::default();
     exchange_args.insert(
         ShortString::from("x-dead-letter-exchange"),
@@ -155,16 +171,7 @@ pub async fn listen(cfg: &Config) -> Result<()> {
         )
         .await?;
 
-    channel
-        .queue_bind(
-            OUTBOX_EXCHANGE,
-            OUTBOX_EXCHANGE,
-            OUTBOX_EXCHANGE,
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
+    tracing::debug!("Defining outbox queue");
     let queue = channel
         .queue_declare(
             oxilib::OUTBOX_EXCHANGE,
@@ -174,19 +181,20 @@ pub async fn listen(cfg: &Config) -> Result<()> {
             FieldTable::default(),
         )
         .await?;
-    tracing::info!("Declared queue {:?}", queue);
 
-    let dlx_queue = channel
-        .queue_declare(
-            &dlx_name,
-            QueueDeclareOptions {
-                ..Default::default()
-            },
+    tracing::debug!("Binding outbox queue to exchange");
+    channel
+        .queue_bind(
+            OUTBOX_EXCHANGE,
+            OUTBOX_EXCHANGE,
+            OUTBOX_EXCHANGE,
+            QueueBindOptions::default(),
             FieldTable::default(),
         )
         .await?;
-    tracing::info!("Declared Dead Letter queue {:?}", dlx_queue);
+    tracing::info!("Declared queue {:?}", queue);
 
+    tracing::debug!("Starting to consume from RabbitMQ");
     let mut consumer = channel
         .basic_consume(
             OUTBOX_EXCHANGE,
