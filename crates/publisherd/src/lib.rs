@@ -86,7 +86,7 @@ pub struct Config {
 pub fn build_config(path: Option<PathBuf>) -> Result<Config> {
     let mut cfg_builder = config::builder::ConfigBuilder::<DefaultState>::default()
         .set_default("amqp_url", "amqp://dev:dev@localhost:5672/master")?
-        .add_source(File::with_name("/etc/publisherd.toml").required(false))
+        .add_source(File::with_name("/etc/publisherd/config.yaml").required(false))
         .add_source(File::with_name("publisherd.toml").required(false));
     if let Some(path) = path {
         cfg_builder =

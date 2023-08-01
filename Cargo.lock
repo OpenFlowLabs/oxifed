@@ -76,6 +76,27 @@ dependencies = [
 [[package]]
 name = "actwkd"
 version = "0.1.0-dev"
+dependencies = [
+ "activitypub",
+ "biscuit-auth",
+ "chrono",
+ "clap 4.3.4",
+ "config",
+ "deadpool-lapin",
+ "futures",
+ "lapin",
+ "miette",
+ "minio",
+ "oxilib",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
 
 [[package]]
 name = "addr2line"
