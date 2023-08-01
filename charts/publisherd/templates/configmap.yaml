@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: publisherd-config
+  labels:
+    {{- include "publisherd.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{- toYaml .Values.config | nindent 4 }}
