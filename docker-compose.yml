@@ -13,26 +13,26 @@ services:
       - 8090:15672
       - 5672:5672
 
-  minio_internal:
+  minio:
     image: quay.io/minio/minio
     volumes:
-      - minio_internal:/data
-    ports:
-      - 9000:9000
-      - 9001:9001
-    command: ["server", "/data", "--console-address", ":9001"]
-
-
-  minio_external:
-    image: quay.io/minio/minio
-    volumes:
-      - minio_external:/data
+      - minio:/data
     ports:
       - 9002:9000
       - 9003:9001
     command: ["server", "/data", "--console-address", ":9001"]
 
+  couchdb:
+    image: "couchdb"
+    volumes:
+      - couchdb:/opt/couchdb/data
+    ports:
+      - 5984:5984
+    environment:
+      COUCHDB_USER: dev
+      COUCHDB_PASSWORD: dev
+
 volumes:
   rabbitmq:
-  minio_internal:
-  minio_external:
+  minio:
+  couchdb:
