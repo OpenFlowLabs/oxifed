@@ -14,6 +14,7 @@ use comrak::{markdown_to_html, ComrakOptions};
 use config::{builder::DefaultState, File};
 use deadpool_lapin::Pool;
 use hyper::StatusCode;
+use lapin::{options::BasicPublishOptions, protocol::basic::AMQPProperties};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use slugify::slugify;
@@ -34,9 +35,15 @@ pub enum Error {
     BiscuitTokenError(#[from] biscuit::error::Token),
     #[error(transparent)]
     BiscuitFormatError(#[from] biscuit::error::Format),
+    #[error(transparent)]
+    JsonError(#[from] serde_json::Error),
+    #[error(transparent)]
+    Lapin(#[from] lapin::Error),
+    #[error(transparent)]
+    URL(#[from] url::ParseError),
     #[error("couchdb error {0}")]
     CouchClientError(String),
-    #[error("couchdb error {0}")]
+    #[error("rabbitmq error {0}")]
     RabbitMQPool(String),
     #[error(transparent)]
     IOError(#[from] std::io::Error),
@@ -135,7 +142,7 @@ pub fn load_config(config_path: Option<PathBuf>) -> Result<Config> {
         .set_default("rabbitmq.host", "localhost")?
         .set_default("rabbitmq.port", "5672")?
         .set_default("rabbitmq.ssl", false)?
-        .set_default("rabbitmq.vhost", "dev")?
+        .set_default("rabbitmq.vhost", "master")?
         .add_source(File::with_name("oxiblog.toml").required(false))
         .add_source(File::with_name("/etc/oxiblog.yaml").required(false));
 
@@ -152,6 +159,7 @@ struct AppState {
     couch_client: Client,
     blog_create_authorizer: Authorizer,
     blog_post_authorizer: Authorizer,
+    private_key: PrivateKey,
     public_key: PublicKey,
     mq_pool: Pool,
 }
@@ -179,6 +187,7 @@ pub async fn listen(cfg: Config) -> Result<()> {
 
     let client = Client::new(cfg.couchdb);
     let kp: DBKeypair = client.get_document("internal", "keypair").await?;
+    let private_key = PrivateKey::from_bytes_hex(&kp.private)?;
     let public_key = PublicKey::from_bytes_hex(&kp.public)?;
     let mut pool_config = deadpool_lapin::Config::default();
     pool_config.url = Some(if cfg.rabbitmq.ssl {
@@ -202,7 +211,7 @@ pub async fn listen(cfg: Config) -> Result<()> {
             String::from("5672")
         };
         format!(
-            "amqps://{}:{}@{}:{}/{}",
+            "amqp://{}:{}@{}:{}/{}",
             cfg.rabbitmq.username,
             cfg.rabbitmq.password,
             cfg.rabbitmq.host,
@@ -222,6 +231,7 @@ pub async fn listen(cfg: Config) -> Result<()> {
             couch_client: client,
             blog_create_authorizer,
             blog_post_authorizer,
+            private_key,
             public_key,
             mq_pool,
         }));
@@ -315,11 +325,17 @@ async fn create_blog(
     Json(request): Json<CreateBlogRequest>,
 ) -> HTTPResult<Json<CreateBlogResponse>> {
     tracing::debug!("{:?}", request);
-    let token = Biscuit::from(authorization.0.token(), &state.public_key)
-        .map_err(|_| HTTPError::UnAuthorized)?;
+    let token =
+        Biscuit::from_base64(authorization.0.token(), &state.public_key).map_err(|err| {
+            tracing::error!("token could not be verified: {}", err);
+            HTTPError::UnAuthorized
+        })?;
     token
         .authorize(&state.blog_create_authorizer)
-        .map_err(|_| HTTPError::UnAuthorized)?;
+        .map_err(|err| {
+            tracing::error!("token not authorized: {}", err);
+            HTTPError::UnAuthorized
+        })?;
     let blog_db_name = slugify(&request.name, "", "-", Some(63));
     state.couch_client.create_db(&blog_db_name).await?;
     let mut settings = request.settings;
@@ -336,6 +352,7 @@ struct BlogPost {
     pub title: String,
     pub summary: String,
     pub content: String,
+    #[serde(rename = "_attachments")]
     pub attachments: couchdb::Attachments,
 }
 
@@ -345,17 +362,18 @@ fn base64_encode(input: &[u8]) -> String {
     encoded
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Content {
     Url(url::Url),
     Embedded(String),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UploadBlogRequest {
     pub title: String,
     pub summary: String,
     pub content: Content,
+    pub to: Option<String>,
 }
 async fn publish_post(
     State(state): State<SharedState>,
@@ -365,11 +383,17 @@ async fn publish_post(
 ) -> HTTPResult<StatusCode> {
     tracing::debug!("{:?}", request);
 
-    let token = Biscuit::from(authorization.0.token(), &state.public_key)
-        .map_err(|_| HTTPError::UnAuthorized)?;
+    let token =
+        Biscuit::from_base64(authorization.0.token(), &state.public_key).map_err(|err| {
+            tracing::error!("error deserializing and verifying token: {}", err);
+            HTTPError::UnAuthorized
+        })?;
     token
         .authorize(&state.blog_post_authorizer)
-        .map_err(|_| HTTPError::UnAuthorized)?;
+        .map_err(|err| {
+            tracing::error!("error authorizing token: {}", err);
+            HTTPError::UnAuthorized
+        })?;
     let content = match &request.content {
         Content::Url(url) => {
             let content = reqwest::get(url.clone()).await?.text().await?;
@@ -384,7 +408,7 @@ async fn publish_post(
     let post = BlogPost {
         title: request.title,
         summary: html_summary,
-        content: html_content,
+        content: html_content.clone(),
         attachments: HashMap::from([
             (
                 String::from("src"),
@@ -398,5 +422,81 @@ async fn publish_post(
     };
     state.couch_client.post_document(&blog, &post).await?;
 
+    tracing::trace!("Getting blog settings from database");
+    let blog_settings: BlogSettings = state.couch_client.get_document(&blog, "Settings").await?;
+
+    tracing::trace!("Post saved to database sending to rabbitmq");
+    let chan = state
+        .mq_pool
+        .get()
+        .await
+        .map_err(|err| {
+            tracing::error!("cannot get connection: {}", err);
+            HTTPError::InternalError(Error::RabbitMQPool(err.to_string()))
+        })?
+        .create_channel()
+        .await
+        .map_err(|err| {
+            tracing::error!("cannot open channel: {}", err);
+
+            HTTPError::InternalError(Error::RabbitMQPool(err.to_string()))
+        })?;
+
+    let kp = KeyPair::from(&state.private_key);
+    let biscuit = biscuit::macros::biscuit!(
+        r#"
+          right({blog}, "read");
+        "#,
+        blog = blog.clone(),
+    )
+    .build(&kp)
+    .map_err(|err| Error::from(err))?;
+
+    let title_slug = slugify(post.title.as_str(), "", "/", None);
+    let full_id = format!(
+        "https://{}/articles/{}",
+        blog_settings.domain.as_str(),
+        &title_slug
+    );
+    let author_actor = format!(
+        "https://{}/actors/{}",
+        blog_settings.domain.as_str(),
+        blog_settings.author.as_str()
+    );
+    let article = activitypub::Article {
+        id: (&full_id).parse().map_err(|err| Error::from(err))?,
+        attributed_to: (&author_actor).parse().map_err(|err| Error::from(err))?,
+        content: html_content.clone(),
+    };
+    let to = if let Some(to) = request.to {
+        vec![to.parse().map_err(|err| Error::from(err))?]
+    } else {
+        vec![]
+    };
+    let msg = oxilib::Message {
+        activity: oxilib::Activity::Create {
+            id: full_id.clone(),
+            object: article,
+            recipients: oxilib::Recipients {
+                to,
+                cc: None,
+                bto: None,
+                bcc: None,
+            },
+        },
+        biscuit: biscuit.to_base64().map_err(|err| Error::from(err))?,
+    };
+    let payload = serde_json::to_vec(&msg).map_err(|err| Error::from(err))?;
+
+    tracing::trace!("Sending out message to rabbitmq");
+    chan.basic_publish(
+        "outbox",
+        "",
+        BasicPublishOptions::default(),
+        &payload,
+        AMQPProperties::default(),
+    )
+    .await
+    .map_err(|err| Error::from(err))?;
     Ok(StatusCode::CREATED)
 }

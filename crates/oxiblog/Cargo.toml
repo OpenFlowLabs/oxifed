@@ -11,6 +11,7 @@ license.workspace = true
 categories.workspace = true
 
 [dependencies]
+activitypub.workspace = true
 axum.workspace = true
 axum-macros.workspace = true
 chrono.workspace = true

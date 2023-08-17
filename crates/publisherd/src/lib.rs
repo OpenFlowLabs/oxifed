@@ -283,6 +283,7 @@ async fn handle_admin_message<'a>(
             object,
             recipients,
         } => {
+            tracing::trace!("Received Create Activity and processing");
             let recp = recipients.get_actors();
             let activity = Activity::Create(Create {
                 context: Context::List(vec![KnownContext::ActivityStreams]),
@@ -309,6 +310,7 @@ async fn handle_admin_message<'a>(
             }
 
             for inbox in inboxes {
+                tracing::trace!("Publishing to inbox: {}", &inbox);
                 let resp = post_to_inbox(inbox, &activity).await?;
 
                 tracing::debug!("Recieved answer from counterpart: {}", resp);

@@ -1,8 +1,26 @@
 [package]
 name = "fedi"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Oxifed cli utility to use the different services"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+license.workspace = true
+categories.workspace = true
 
 [dependencies]
+reqwest = { workspace = true, features = ["blocking"] }
+tokio.workspace = true
+clap.workspace = true
+miette = { workspace = true, features = ["fancy"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+oxilib.workspace = true
+biscuit-auth.workspace = true
+activitypub.workspace = true
+microxdg = "0.1.0"
+serde.workspace = true
+serde_yaml = "0.9.25"
+oxiblog = { version = "0.1.0-dev", path = "../oxiblog" }
