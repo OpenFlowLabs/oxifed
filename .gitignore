@@ -3,3 +3,4 @@ target
 identd.db
 sample_data
 k8s
+auth_token
