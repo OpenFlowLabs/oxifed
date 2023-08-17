@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
 use lapin::{options::BasicPublishOptions, protocol::basic::AMQPProperties, Channel};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 use url::Url;
 
@@ -19,7 +16,10 @@ pub enum Error {
 type Result<T> = miette::Result<T, Error>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Activity {
+pub enum Activity<O>
+where
+    O: Serialize,
+{
     Follow {
         name: String,
         server: String,
@@ -27,13 +27,13 @@ pub enum Activity {
     },
     Create {
         id: String,
-        object: HashMap<String, Value>,
+        object: O,
         #[serde(flatten)]
         recipients: Recipients,
     },
     Update {
         object: Url,
-        update: HashMap<String, Value>,
+        update: O,
         #[serde(flatten)]
         recipients: Recipients,
     },
@@ -68,12 +68,12 @@ pub enum Activity {
         target: Url,
     },
     Offer {
-        object: HashMap<String, Value>,
+        object: O,
         #[serde(flatten)]
         recipients: Recipients,
     },
     Invite {
-        object: HashMap<String, Value>,
+        object: O,
         #[serde(flatten)]
         recipients: Recipients,
     },
@@ -140,14 +140,20 @@ impl Recipients {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Message {
-    pub activity: Activity,
+pub struct Message<O>
+where
+    O: Serialize,
+{
+    pub activity: Activity<O>,
     pub biscuit: String,
 }
 
 pub const OUTBOX_EXCHANGE: &str = "outbox";
 
-pub async fn post(channel: Channel, routing_key: &str, msg: &Message) -> Result<()> {
+pub async fn post<O>(channel: Channel, routing_key: &str, msg: &Message<O>) -> Result<()>
+where
+    O: Serialize,
+{
     let payload = serde_json::to_vec(msg)?;
     channel
         .basic_publish(

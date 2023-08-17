@@ -3,7 +3,7 @@ use activitypub::{
     collection::OrderedCollection,
     fetch_actor, get_inbox, post_to_inbox, Context, KnownContext,
 };
-use biscuit_auth::{format, Biscuit, PublicKey};
+use biscuit_auth::{Biscuit, PublicKey};
 use config::{builder::DefaultState, File};
 use futures::StreamExt;
 use lapin::{
@@ -15,14 +15,12 @@ use lapin::{
 };
 use miette::Diagnostic;
 use minio::s3::args::{
-    BucketExistsArgs, MakeBucketArgs, ObjectConditionalReadArgs, PutObjectApiArgs, PutObjectArgs,
-    UploadObjectArgs,
+    BucketExistsArgs, MakeBucketArgs, ObjectConditionalReadArgs, PutObjectApiArgs,
 };
 use oxilib::{Message, TokenContext, OUTBOX_EXCHANGE};
 use serde::Deserialize;
 use std::path::PathBuf;
 use thiserror::Error;
-use tokio::sync::oneshot::channel;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
@@ -79,8 +77,7 @@ pub struct MinioConfig {
 pub struct Config {
     amqp_url: String,
     public_key: String,
-    internal_s3: MinioConfig,
-    external_s3: MinioConfig,
+    s3: MinioConfig,
 }
 
 pub fn build_config(path: Option<PathBuf>) -> Result<Config> {
@@ -108,16 +105,12 @@ pub async fn listen(cfg: &Config) -> Result<()> {
 
     let pool = pool_config.create_pool(Some(deadpool_lapin::Runtime::Tokio1))?;
 
-    let external_minio_base_url =
-        minio::s3::http::BaseUrl::from_string(cfg.external_s3.url.to_string())?;
+    let external_minio_base_url = minio::s3::http::BaseUrl::from_string(cfg.s3.url.to_string())?;
 
-    let static_external_provider = minio::s3::creds::StaticProvider::new(
-        &cfg.external_s3.access_key,
-        &cfg.external_s3.secret_key,
-        None,
-    );
+    let static_external_provider =
+        minio::s3::creds::StaticProvider::new(&cfg.s3.access_key, &cfg.s3.secret_key, None);
 
-    tracing::debug!("Connected to minio: {}", &cfg.external_s3.url);
+    tracing::debug!("Connected to minio: {}", &cfg.s3.url);
     let external_client = minio::s3::client::Client::new(
         external_minio_base_url.clone(),
         Some(&static_external_provider),
@@ -228,7 +221,8 @@ async fn handle_admin_message<'a>(
     pk: &biscuit_auth::PublicKey,
     data: &[u8],
 ) -> Result<()> {
-    let msg: Message = serde_json::from_slice(data)?;
+    let msg: Message<std::collections::HashMap<String, serde_json::Value>> =
+        serde_json::from_slice(data)?;
     let token = Biscuit::from_base64(&msg.biscuit, pk)?;
     let t = token
         .context()

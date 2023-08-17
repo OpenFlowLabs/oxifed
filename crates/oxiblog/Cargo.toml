@@ -32,3 +32,7 @@ url.workspace = true
 uuid.workspace = true
 oxilib.workspace = true
 biscuit-auth.workspace = true
+slugify = "0.1.0"
+comrak = { version = "0.18.0", default-features = false, features = ["syntect", "shortcodes"] }
+base64 = "0.21.2"
+deadpool-lapin = { version = "0.10.0", features = ["serde"] }
