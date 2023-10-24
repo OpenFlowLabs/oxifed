@@ -1090,10 +1090,10 @@ async fn token_endpoint(
         .read_to_string(&mut pem_contents)
         .map_err(|e| OAuthError::ServerError(Some(e.to_string())))?;
 
-    let pk = RS384KeyPair::from_pem(&pem_contents)
+    let keypair = RS384KeyPair::from_pem(&pem_contents)
         .map_err(|e| OAuthError::ServerError(Some(e.to_string())))?;
 
-    let public_key = pk.public_key();
+    let public_key = keypair.public_key();
 
     use realm::realm::Entity as RealmEntity;
     let realm = RealmEntity::find_by_id(&realm)
@@ -1137,7 +1137,7 @@ async fn token_endpoint(
                                     .with_nonce(&auth_request.nonce)
                                     .with_audience(&auth_request.client_id);
 
-                                let token = pk
+                                let token = keypair
                                     .sign(claims)
                                     .map_err(|e| OAuthError::ServerError(Some(e.to_string())))?;
 
