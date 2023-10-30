@@ -2468,6 +2468,7 @@ dependencies = [
  "axum-macros",
  "base64 0.21.2",
  "bcrypt",
+ "biscuit-auth",
  "chrono",
  "clap 4.3.4",
  "config",

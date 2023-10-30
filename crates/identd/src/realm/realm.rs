@@ -9,6 +9,8 @@ pub struct Model {
     pub name: String,
     pub domain: Option<String>,
     pub provider_metadata: String,
+    pub biscuit_private_key: String,
+    pub biscuit_public_key: String,
     pub jwks: String,
     pub issuer_url: String,
 }

@@ -1,3 +1,4 @@
+use sea_orm::sea_query::ColumnDef;
 use sea_orm_migration::prelude::*;
 
 pub struct RealmMigrator;
@@ -26,6 +27,8 @@ impl MigrationTrait for DBInitializer {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Realm::Domain).string().null())
+                    .col(ColumnDef::new(Realm::BiscuitPrivateKey).string().not_null())
+                    .col(ColumnDef::new(Realm::BiscuitPublicKey).string().not_null())
                     .col(ColumnDef::new(Realm::ProviderMetadata).json().not_null())
                     .col(ColumnDef::new(Realm::Jwks).json().not_null())
                     .col(ColumnDef::new(Realm::IssuerUrl).string().not_null())
@@ -115,6 +118,8 @@ enum Realm {
     Table,
     Name,
     Domain,
+    BiscuitPrivateKey,
+    BiscuitPublicKey,
     IssuerUrl,
     ProviderMetadata,
     Jwks,

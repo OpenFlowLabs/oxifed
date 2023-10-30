@@ -43,6 +43,7 @@ sha2 = "0.10.7"
 base64 = "0.21.2"
 deadpool-lapin = { version = "0.10.0", features = ["serde"] }
 futures.workspace = true
+biscuit-auth.workspace = true
 
 [dev-dependencies]
 testdir = {version="0.7.3"}

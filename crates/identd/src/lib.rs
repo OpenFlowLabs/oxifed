@@ -249,12 +249,14 @@ pub struct ConfigRealm {
     pub name: String,
     pub domain: Option<String>,
     pub clients: Vec<Client>,
+    pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Client {
     id: String,
     secret: Option<String>,
+    biscuit_private_key: String,
     redirect_uri: String,
 }
 
@@ -263,6 +265,7 @@ impl Client {
         Self {
             id: id.into(),
             secret: secret.map(|s| s.into()),
+            biscuit_private_key: String::new(),
             redirect_uri: redirect_uri.into(),
         }
     }
@@ -314,6 +317,7 @@ impl ServerState {
                     &cfg_realm.name,
                     &domain_or_default,
                     helper_get_scheme_from_config(config.use_ssl),
+                    cfg_realm.scopes.as_slice(),
                     cfg_realm.clients.clone(),
                     &config.realm_keys_base_path,
                 )
@@ -335,6 +339,7 @@ impl ServerState {
         name: &str,
         domain: &str,
         scheme: &str,
+        scopes: &[String],
         clients: Vec<Client>,
         realm_keys_base_path: P,
     ) -> Result<()> {
@@ -351,6 +356,11 @@ impl ServerState {
         use realm::realm::ActiveModel as RealmActiveModel;
 
         let base_url = format!("{}://{}", scheme, domain);
+
+        let scopes = scopes
+            .iter()
+            .map(|s| openidconnect::Scope::new(s.clone()))
+            .collect::<Vec<openidconnect::Scope>>();
 
         let metadata = CoreProviderMetadata::new(
             // Parameters required by the OpenID Connect Discovery spec.
@@ -385,11 +395,7 @@ impl ServerState {
         // Recommended: support the UserInfo endpoint.
         .set_userinfo_endpoint(Some(UserInfoUrl::new(format!("{}/userinfo", &base_url))?))
         // Recommended: specify the supported scopes.
-        .set_scopes_supported(Some(vec![
-            openidconnect::Scope::new("openid".to_string()),
-            openidconnect::Scope::new("email".to_string()),
-            openidconnect::Scope::new("profile".to_string()),
-        ]))
+        .set_scopes_supported(Some(scopes))
         // Recommended: specify the supported ID token claims.
         .set_claims_supported(Some(vec![
             // Providers may also define an enum instead of using CoreClaimName.
