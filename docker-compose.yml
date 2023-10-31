@@ -24,6 +24,29 @@ services:
     volumes:
         - couchdb:/opt/couchdb/data
 
+  identd:
+    build:
+      context: .
+      args: ["PACKAGE=identd"]
+    ports:
+      - "3000:3000"
+
+  domainservd:
+    build:
+      context: .
+      args: ["PACKAGE=domainservd"]
+    ports:
+      - "3000:3000"
+    command:
+      - "start"
+
+  publisherd:
+    build:
+      context: .
+      args: ["PACKAGE=publisherd"]
+    ports:
+      - "3000:3000"
+
 volumes:
   rabbitmq:
   couchdb:

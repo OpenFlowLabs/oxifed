@@ -10,6 +10,8 @@ pub enum Activity {
     Follow(Follow),
     Accept(Accept),
     Announce(Announce),
+    Like(Like),
+    EchoRequest(EchoRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -18,6 +20,7 @@ pub enum CreateType {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Create {
+    #[serde(rename = "@context")]
     pub context: Context,
     pub id: Url,
     #[serde(rename = "type")]
@@ -35,6 +38,7 @@ pub enum FollowType {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Follow {
+    #[serde(rename = "@context")]
     pub context: Context,
     pub id: Url,
     #[serde(rename = "type")]
@@ -51,6 +55,7 @@ pub enum AcceptType {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Accept {
+    #[serde(rename = "@context")]
     pub context: Context,
     pub id: Url,
     #[serde(rename = "type")]
@@ -67,6 +72,7 @@ pub enum AnnounceType {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Announce {
+    #[serde(rename = "@context")]
     pub context: Context,
     pub id: Url,
     #[serde(rename = "type")]
@@ -76,4 +82,34 @@ pub struct Announce {
     pub to: Vec<Url>,
     pub cc: Option<Vec<Url>>,
     pub object: Url,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum EchoRequestType {
+    EchoRequest,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EchoRequest {
+    #[serde(rename = "@context")]
+    pub context: Context,
+    #[serde(rename = "type")]
+    pub kind: EchoRequestType,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum LikeType {
+    Like,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Like {
+    #[serde(rename = "@context")]
+    pub context: Context,
+    pub id: Url,
+    #[serde(rename = "type")]
+    pub kind: LikeType,
+    pub actor: Url,
+    #[serde(deserialize_with = "deserialize_skip_error", default)]
+    pub to: Vec<Url>,
 }

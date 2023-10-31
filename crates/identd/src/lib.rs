@@ -434,6 +434,8 @@ impl ServerState {
             provider_metadata: ActiveValue::Set(provider_meta_string),
             jwks: ActiveValue::Set(jwks_string),
             issuer_url: ActiveValue::Set(base_url),
+            biscuit_private_key: ActiveValue::Set(String::new()),
+            biscuit_public_key: ActiveValue::Set(String::new()),
         };
 
         realm.insert(realm_db).await?;

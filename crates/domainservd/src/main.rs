@@ -22,6 +22,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::Mutex;
+use tracing::debug;
 use tracing_subscriber::prelude::*;
 use url::Url;
 use webfinger::{Link, Webfinger};
@@ -111,7 +112,7 @@ enum Command {
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
     domain: String,
-    addr: Option<String>,
+    addr: String,
     use_ssl: bool,
     accounts: Option<Vec<ConfigUser>>,
     amqp_url: String,
@@ -162,7 +163,7 @@ const INBOX_RECEIVE_QUEUE: &str = "inbox";
 async fn load_config() -> Result<Config> {
     use config::{builder::DefaultState, ConfigBuilder, File};
     let builder = ConfigBuilder::<DefaultState>::default()
-        .set_default("addr", "127.0.0.1:3001")?
+        .set_default("addr", "0.0.0.0:3001")?
         .set_default("domain", "localhost:3001")?
         .set_default("use_ssl", false)?
         .set_default("amqp_url", "amqp://dev:dev@localhost:5672/master")?
@@ -175,12 +176,6 @@ async fn load_config() -> Result<Config> {
 }
 
 async fn listen(cfg: &Config) -> Result<()> {
-    let addr = if let Some(addr) = &cfg.addr {
-        addr.clone()
-    } else {
-        String::from("localhost:3001")
-    };
-
     let mut pool_config = deadpool_lapin::Config::default();
     pool_config.url = Some(cfg.amqp_url.clone());
 
@@ -188,7 +183,7 @@ async fn listen(cfg: &Config) -> Result<()> {
         .create_pool(Some(deadpool_lapin::Runtime::Tokio1))
         .map_err(|e| Error::InternalError(e.to_string()))?;
 
-    tracing::debug!("Opening RabbitMQ Connection");
+    tracing::debug!("Opening RabbitMQ Connection: {}", &cfg.amqp_url);
     let conn = mq_pool.get().await?;
     tracing::debug!(
         "Connected to {} as {}",
@@ -198,7 +193,11 @@ async fn listen(cfg: &Config) -> Result<()> {
 
     let channel = conn.create_channel().await?;
 
-    tracing::debug!("Defining inbox queue from channel id {}", channel.id());
+    tracing::debug!(
+        "Defining inbox: {} queue from channel id {}",
+        INBOX_RECEIVE_QUEUE,
+        channel.id()
+    );
     channel
         .queue_declare(
             INBOX_RECEIVE_QUEUE,
@@ -236,8 +235,8 @@ async fn listen(cfg: &Config) -> Result<()> {
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(Arc::new(Mutex::new(state)));
 
-    tracing::debug!("Starting Webserver");
-    axum::Server::try_bind(&addr.parse()?)
+    tracing::debug!("Starting Webserver on: {}", &cfg.addr);
+    axum::Server::try_bind(&cfg.addr.parse()?)
         .map_err(|e| Error::HyperError(e.to_string()))?
         .serve(app.into_make_service())
         .await
@@ -343,6 +342,21 @@ async fn post_shared_inbox(
                 Err(Error::UnknownUser)
             }
         }
+        Activity::EchoRequest(_) => {
+            debug!("Received an echo request");
+            Ok(StatusCode::CREATED)
+        }
+        Activity::Like(like) => {
+            let mut activity = like.clone();
+            activity.to = filter_recipients(&accounts, &activity.to);
+
+            if activity.to.len() > 0 {
+                queue_activity(state, activity, INBOX_RECEIVE_QUEUE).await?;
+                Ok(StatusCode::CREATED)
+            } else {
+                Err(Error::UnknownUser)
+            }
+        }
     }
 }
 
@@ -410,6 +424,22 @@ async fn post_inbox(
                 if let Some(cc) = &activity.cc {
                     activity.cc = Some(filter_recipients(&accounts, &cc));
                 }
+
+                if activity.to.len() > 0 {
+                    queue_activity(state, activity, INBOX_RECEIVE_QUEUE).await?;
+                    Ok(StatusCode::CREATED)
+                } else {
+                    Err(Error::UnknownUser)
+                }
+            }
+            Activity::EchoRequest(_) => {
+                debug!("Received an echo request");
+                Ok(StatusCode::CREATED)
+            }
+            Activity::Like(like) => {
+                let mut activity = like.clone();
+                let actor = format!("{}/actors/{}", &base_url, &actor);
+                activity.to = vec![actor.parse()?];
 
                 if activity.to.len() > 0 {
                     queue_activity(state, activity, INBOX_RECEIVE_QUEUE).await?;
