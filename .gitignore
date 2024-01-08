@@ -4,3 +4,14 @@ identd.db
 sample_data
 k8s
 auth_token
+oxiblog.yaml
+# Added by cargo
+
+/target
+
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target

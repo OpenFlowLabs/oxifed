@@ -1,52 +1,36 @@
-mod identd;
-
-use std::thread;
-
-use ::identd::ServerConfig;
-use clap::{Parser, Subcommand};
+use clap::Parser;
+use clap::Subcommand;
 use miette::Diagnostic;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error, Diagnostic)]
-pub enum Error {
+#[derive(Debug, Error, Diagnostic)]
+enum Error {
     #[error(transparent)]
     IOError(#[from] std::io::Error),
 }
 
+type Result<T> = miette::Result<T, Error>;
+
 #[derive(Debug, Parser)]
 struct Args {
-    #[clap(subcommand)]
-    commands: Commands,
+    #[command(subcommand)]
+    command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    TestInit,
+    Hello,
 }
 
 fn main() -> miette::Result<()> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // axum logs rejections from built-in extractors with the `axum::rejection`
-                // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
-                "xtask=trace,tower_http=trace,axum::rejection=trace".into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
     let args = Args::parse();
-    match args.commands {
-        Commands::TestInit => test_init()?,
-    };
-
+    match args.command {
+        Commands::Hello => hello()?,
+    }
     Ok(())
 }
 
-fn test_init() -> miette::Result<()> {
-    let cfg = ServerConfig::default();
-    thread::spawn(|| async move {
-        crate::identd::run_test_server(cfg).await.unwrap();
-    });
+fn hello() -> Result<()> {
+    println!("There would be help is it had one!!!");
     Ok(())
 }

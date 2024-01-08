@@ -1,52 +1,15 @@
-version: '3.9'
+version: '3.7'
 
 services:
-  rabbitmq:
-    image: rabbitmq:3.12-management
+  mongodb:
+    image: mongo:7
+    restart: on-failure
     environment:
-      RABBITMQ_DEFAULT_VHOST: "master"
-      RABBITMQ_DEFAULT_USER: "dev"
-      RABBITMQ_DEFAULT_PASS: "dev"
+      MONGO_INITDB_ROOT_USERNAME: dev
+      MONGO_INITDB_ROOT_PASSWORD: dev
+    ports:
+      - "27017:27017"
     volumes:
-      - rabbitmq:/var/lib/rabbitmq
-    ports:
-      - 8090:15672
-      - 5672:5672
-
-  couchserver:
-    image: couchdb
-    restart: always
-    ports:
-      - "5984:5984"
-    environment:
-      - COUCHDB_USER=dev
-      - COUCHDB_PASSWORD=dev
-    volumes:
-        - couchdb:/opt/couchdb/data
-
-  identd:
-    build:
-      context: .
-      args: ["PACKAGE=identd"]
-    ports:
-      - "3000:3000"
-
-  domainservd:
-    build:
-      context: .
-      args: ["PACKAGE=domainservd"]
-    ports:
-      - "3000:3000"
-    command:
-      - "start"
-
-  publisherd:
-    build:
-      context: .
-      args: ["PACKAGE=publisherd"]
-    ports:
-      - "3000:3000"
-
-volumes:
-  rabbitmq:
-  couchdb:
+      - "./mongodb/devkeyfile:/etc/devkeyfile"
+      - "./mongodb/initdb:/docker-entrypoint-initdb.d/"
+    command: --replSet rs0 --keyFile=/etc/devkeyfile --bind_ip 0.0.0.0

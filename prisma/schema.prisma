@@ -1,0 +1,38 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "cargo prisma"
+  output   = "../src/prisma.rs"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Domain {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  dnsName      String   @unique
+  actors       Actor[]  @relation("Members")
+  applications String[]
+}
+
+model Actor {
+  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  displayName String
+  domain      Domain @relation("Members", fields: [domainId], references: [id])
+  domainId    String @db.ObjectId
+  notes       Note[]
+}
+
+model Note {
+  id       String  @id @default(auto()) @map("_id") @db.ObjectId
+  body     String
+  bodyHtml String
+  author   Actor   @relation(fields: [authorId], references: [id])
+  authorId String  @db.ObjectId
+  parentId String? @db.ObjectId
+  parent   Note?   @relation("NotesComments", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  comments Note[]  @relation("NotesComments")
+}
