@@ -99,3 +99,7 @@ pub async fn create_blog(client: PrismaClient, actor: String) -> Result<()> {
     info!("Created blog {actor_name}@{domain_name}");
     Ok(())
 }
+
+pub async fn publish_article(client: PrismaClient, actor: String, content: String) -> Result<()> {
+    Ok(())
+}
