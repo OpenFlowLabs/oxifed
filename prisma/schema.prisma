@@ -21,18 +21,46 @@ model Domain {
 model Actor {
   id          String @id @default(auto()) @map("_id") @db.ObjectId
   displayName String
+  handle      String @unique
   domain      Domain @relation("Members", fields: [domainId], references: [id])
   domainId    String @db.ObjectId
   notes       Note[]
+  keys        Key[]
+}
+
+type Key {
+  name        String
+  private_key String
+  public_key  String
+  key_type    KeyType
+}
+
+enum KeyType {
+  Ed25519
+}
+
+model Article {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  descriptor   String   @unique
+  title        String
+  date         DateTime
+  content      String
+  content_html String
+  draft        Boolean  @default(false)
+  tags         String[]
+  note         Note     @relation(fields: [noteId], references: [id])
+  noteId       String   @unique @db.ObjectId
 }
 
 model Note {
-  id       String  @id @default(auto()) @map("_id") @db.ObjectId
-  body     String
-  bodyHtml String
-  author   Actor   @relation(fields: [authorId], references: [id])
-  authorId String  @db.ObjectId
-  parentId String? @db.ObjectId
-  parent   Note?   @relation("NotesComments", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  comments Note[]  @relation("NotesComments")
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  descriptor String   @unique
+  body       String
+  bodyHtml   String
+  author     Actor    @relation(fields: [authorId], references: [id])
+  authorId   String   @db.ObjectId
+  parentId   String?  @db.ObjectId
+  parent     Note?    @relation("NotesComments", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  comments   Note[]   @relation("NotesComments")
+  article    Article?
 }

@@ -11,12 +11,20 @@ members = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = { version = "0.4.31", features = ["serde"] }
 clap = { version = "4.4.13", features = ["derive"] }
 config = "0.13.4"
+ed25519-dalek = { version = "2.1.0", features = ["pem", "signature", "digest", "rand_core"] }
+gray_matter = "0.2.6"
 miette = { version = "5.10.0", features = ["fancy"] }
 prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
 prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11" }
+pulldown-cmark = "0.9.3"
+rand = "0.8.5"
 serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+sha3 = "0.10.8"
+slugify = "0.1.0"
 thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["full", "tracing"] }
 tracing = { version = "0.1.40", features = ["log"] }

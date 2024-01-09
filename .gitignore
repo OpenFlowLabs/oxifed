@@ -5,6 +5,7 @@ sample_data
 k8s
 auth_token
 oxiblog.yaml
+oxiblog.toml
 # Added by cargo
 
 /target

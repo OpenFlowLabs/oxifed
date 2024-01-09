@@ -1,13 +1,15 @@
 #[allow(warnings, unused)]
-mod prisma;
+pub mod prisma;
 
 use clap::{Parser, Subcommand};
 use config::File;
 use miette::Diagnostic;
+#[allow(unused_imports)]
 use prisma::*;
 use serde::Deserialize;
+use sha3::{Digest, Sha3_256};
+use std::path::PathBuf;
 use thiserror::Error;
-use tracing::{debug, info};
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
@@ -25,25 +27,39 @@ pub enum Error {
 
     #[error("please specify an actor in the format name@domain")]
     WrongActorFormat,
+
+    #[error("post has no frontmatter can not create")]
+    NoFrontmatter,
+
+    #[error(transparent)]
+    SerdeJSON(#[from] serde_json::error::Error),
+
+    #[error(transparent)]
+    PKCS8Priv(#[from] ed25519_dalek::pkcs8::Error),
+
+    #[error(transparent)]
+    PKCS8Pub(#[from] ed25519_dalek::pkcs8::spki::Error),
 }
 
-type Result<T> = miette::Result<T, Error>;
+pub type Result<T> = miette::Result<T, Error>;
 
 #[derive(Debug, Parser)]
 pub struct Args {
-    connection_string: Option<String>,
+    pub connection_string: Option<String>,
     #[command(subcommand)]
-    command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Deserialize)]
 pub struct Config {
-    connection_string: String,
+    pub connection_string: String,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Commands {
     CreateBlog { actor: String },
+    ListBlogs,
+    PublishArticle { actor: String, file: PathBuf },
 }
 
 pub fn read_config(args: &Args) -> Result<Config> {
@@ -53,53 +69,16 @@ pub fn read_config(args: &Args) -> Result<Config> {
             "mongodb://dev:dev@localhost:27017/oxifed?authSource=admin&retryWrites=true&w=majority",
         )?
         .add_source(File::with_name("oxiblog").required(false))
-        .add_source(File::with_name("/etc/oxifed/blog.yaml").required(false))
+        .add_source(File::with_name("/etc/oxifed/blog").required(false))
         .set_override_option("connection_string", args.connection_string.clone())?
         .build()?;
     Ok(cfg.try_deserialize()?)
 }
 
-pub async fn run_command(config: Config, args: &Args) -> Result<()> {
-    let client = PrismaClient::_builder()
-        .with_url(config.connection_string)
-        .build()
-        .await?;
-    match args.command.clone() {
-        Commands::CreateBlog { actor } => create_blog(client, actor).await,
-    }
-}
-
-pub async fn create_blog(client: PrismaClient, actor: String) -> Result<()> {
+pub fn generate_descriptor(content: &str, actor: &str) -> Result<String> {
     let (actor_name, domain_name) = actor.split_once("@").ok_or(Error::WrongActorFormat)?;
-
-    debug!("Creating or updating blog domain");
-    client
-        .domain()
-        .upsert(
-            domain::dns_name::equals(domain_name.to_owned()),
-            (
-                domain_name.to_owned(),
-                vec![domain::applications::set(vec!["blog".to_owned()])],
-            ),
-            vec![domain::applications::push(vec!["blog".to_owned()])],
-        )
-        .exec()
-        .await?;
-
-    client
-        .actor()
-        .create(
-            actor_name.to_owned(),
-            domain::dns_name::equals(domain_name.to_owned()),
-            vec![],
-        )
-        .exec()
-        .await?;
-
-    info!("Created blog {actor_name}@{domain_name}");
-    Ok(())
-}
-
-pub async fn publish_article(client: PrismaClient, actor: String, content: String) -> Result<()> {
-    Ok(())
+    let mut hasher = Sha3_256::new();
+    hasher.update(content.as_bytes());
+    let hash = hasher.finalize();
+    Ok(format!("oxifed:{actor_name}:{domain_name}:{hash:x}"))
 }
