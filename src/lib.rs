@@ -1,5 +1,9 @@
+pub mod activitypub;
+pub mod actor;
+pub mod domainservd;
 #[allow(warnings, unused)]
 pub mod prisma;
+pub mod webfinger;
 
 use clap::{Parser, Subcommand};
 use config::File;
@@ -81,4 +85,12 @@ pub fn generate_descriptor(content: &str, actor: &str) -> Result<String> {
     hasher.update(content.as_bytes());
     let hash = hasher.finalize();
     Ok(format!("oxifed:{actor_name}:{domain_name}:{hash:x}"))
+}
+
+pub fn build_base_url(use_ssl: bool, domain: &str) -> String {
+    if use_ssl {
+        format!("https://{domain}")
+    } else {
+        format!("http://{domain}")
+    }
 }
