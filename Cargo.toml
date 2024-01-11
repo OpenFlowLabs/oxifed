@@ -11,6 +11,10 @@ members = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+activitypub_federation = { version = "0.5.0", default-features = false }
+axum = "0.7.3"
+axum-extra = "0.9.1"
+base64 = "0.21.7"
 chrono = { version = "0.4.31", features = ["serde"] }
 clap = { version = "4.4.13", features = ["derive"] }
 config = "0.13.4"
@@ -23,10 +27,14 @@ pulldown-cmark = "0.9.3"
 rand = "0.8.5"
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
+serde_with = "3.4.0"
+sha2 = "0.10.8"
 sha3 = "0.10.8"
 slugify = "0.1.0"
 thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["full", "tracing"] }
 tracing = { version = "0.1.40", features = ["log"] }
 tracing-subscriber = { version = "0.3.18", features = ["json", "tracing", "env-filter"] }
+url = { version = "2.5.0", features = ["serde"] }
+webfinger = "0.5.1"
 
