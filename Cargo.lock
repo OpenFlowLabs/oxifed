@@ -3293,6 +3293,7 @@ dependencies = [
  "ed25519-dalek",
  "gray_matter",
  "miette",
+ "mongodb",
  "prisma-client-rust",
  "prisma-client-rust-cli",
  "pulldown-cmark",

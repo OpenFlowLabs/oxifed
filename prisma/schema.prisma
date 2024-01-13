@@ -50,6 +50,7 @@ model Article {
   tags         String[]
   note         Note     @relation(fields: [noteId], references: [id])
   noteId       String   @unique @db.ObjectId
+  publishedAt  DateTime @default(now())
 }
 
 model Note {
@@ -63,4 +64,5 @@ model Note {
   parent     Note?    @relation("NotesComments", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   comments   Note[]   @relation("NotesComments")
   article    Article?
+  postedAt   DateTime @default(now())
 }

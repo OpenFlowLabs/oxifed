@@ -1,7 +1,11 @@
 mod actors;
+mod collections;
 mod webfinger;
 
-use crate::{domainservd::actors::get_actor, PrismaClient};
+use crate::{
+    domainservd::{actors::get_actor, collections::get_outbox_collection},
+    PrismaClient,
+};
 use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use clap::{Parser, Subcommand};
 use config::File;
@@ -32,6 +36,12 @@ pub enum DomainServdError {
 
     #[error(transparent)]
     Url(#[from] url::ParseError),
+
+    #[error(transparent)]
+    MongoDB(#[from] mongodb::error::Error),
+
+    #[error(transparent)]
+    MongoValueAccessError(#[from] mongodb::bson::raw::ValueAccessError),
 
     #[error("could not find {0}")]
     NotFound(String),
@@ -87,6 +97,7 @@ pub enum Commands {
 struct ServerState {
     use_ssl: bool,
     prisma: crate::PrismaClient,
+    mongo: mongodb::Client,
 }
 
 type SharedState = Arc<Mutex<ServerState>>;
@@ -108,22 +119,28 @@ pub fn read_config(args: &Args) -> Result<Config> {
 
 pub async fn listen(cfg: Config) -> Result<()> {
     debug!("Starting domainservd");
-    let client = PrismaClient::_builder()
-        .with_url(cfg.connection_string)
+    let prisam_client = PrismaClient::_builder()
+        .with_url(cfg.connection_string.clone())
         .build()
         .await?;
 
+    let mongo_client = mongodb::Client::with_uri_str(&cfg.connection_string).await?;
+
     let shared_state = SharedState::new(Mutex::new(ServerState {
         use_ssl: cfg.use_ssl,
-        prisma: client,
+        prisma: prisam_client,
+        mongo: mongo_client.clone(),
     }));
+
     let app = Router::new()
         .route("/.well-known/webfinger", get(get_webfinger))
         .route("/actors/:actor", get(get_actor))
+        .route("/actors/:actor/outbox", get(get_outbox_collection))
         .with_state(shared_state);
 
     let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
     info!("Listening on {}", &cfg.listen);
     axum::serve(listener, app).await?;
+    mongo_client.shutdown();
     Ok(())
 }
