@@ -1,15 +1,20 @@
 version: '3.7'
 
 services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: oxifed
+    ports:
+      - "5432:5432"
   mongodb:
     image: mongo:7
-    restart: on-failure
+    restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: dev
       MONGO_INITDB_ROOT_PASSWORD: dev
     ports:
       - "27017:27017"
-    volumes:
-      - "./mongodb/devkeyfile:/etc/devkeyfile"
-      - "./mongodb/initdb:/docker-entrypoint-initdb.d/"
-    command: --replSet rs0 --keyFile=/etc/devkeyfile --bind_ip 0.0.0.0

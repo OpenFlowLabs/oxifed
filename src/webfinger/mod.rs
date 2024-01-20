@@ -1,4 +1,3 @@
-use chrono::format::format;
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -7,7 +6,7 @@ use std::{fmt::Display, str::FromStr};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-enum WebfingerError {
+pub enum WebfingerError {
     #[error("webfinger URI has no scheme")]
     NoScheme,
 
