@@ -2,37 +2,42 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "cargo prisma"
-  output   = "../src/prisma.rs"
+  provider        = "cargo prisma"
+  output          = "../src/prisma.rs"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "mongodb"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuidOssp(map: "uuid-ossp")]
 }
 
 model Domain {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  id           String   @id @default(uuid()) @db.Uuid
   dnsName      String   @unique
   actors       Actor[]  @relation("Members")
   applications String[]
 }
 
 model Actor {
-  id          String @id @default(auto()) @map("_id") @db.ObjectId
+  id          String @id @default(uuid()) @db.Uuid
   displayName String
   handle      String @unique
   domain      Domain @relation("Members", fields: [domainId], references: [id])
-  domainId    String @db.ObjectId
+  domainId    String @db.Uuid
   notes       Note[]
   keys        Key[]
 }
 
-type Key {
+model Key {
+  id          String  @id @default(uuid()) @db.Uuid
+  actor       Actor   @relation(fields: [actorId], references: [id])
+  actorId     String  @db.Uuid
   name        String
   private_key String
   public_key  String
-  key_type    KeyType
+  key_type    KeyType @default(Ed25519)
 }
 
 enum KeyType {
@@ -40,7 +45,7 @@ enum KeyType {
 }
 
 model Article {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  id           String   @id @default(uuid()) @db.Uuid
   descriptor   String   @unique
   title        String
   date         DateTime
@@ -49,18 +54,18 @@ model Article {
   draft        Boolean  @default(false)
   tags         String[]
   note         Note     @relation(fields: [noteId], references: [id])
-  noteId       String   @unique @db.ObjectId
+  noteId       String   @unique @db.Uuid
   publishedAt  DateTime @default(now())
 }
 
 model Note {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  id         String   @id @default(uuid()) @db.Uuid
   descriptor String   @unique
   body       String
   bodyHtml   String
   author     Actor    @relation(fields: [authorId], references: [id])
-  authorId   String   @db.ObjectId
-  parentId   String?  @db.ObjectId
+  authorId   String   @db.Uuid
+  parentId   String?  @db.Uuid
   parent     Note?    @relation("NotesComments", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   comments   Note[]   @relation("NotesComments")
   article    Article?

@@ -215,7 +215,7 @@ impl PersonActor {
             endpoints: Some(vec![Endpoint {
                 shared_inbox: Some(format!("{}/inbox", domain).parse().unwrap()),
             }]),
-            preferred_username: username.clone().to_owned(),
+            preferred_username: username.to_owned(),
             public_key,
         }
     }

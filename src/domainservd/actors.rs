@@ -26,6 +26,7 @@ pub(crate) async fn get_actor(
         .actor()
         .find_unique(prisma::actor::handle::equals(handle.clone()))
         .with(prisma::actor::domain::fetch())
+        .with(prisma::actor::keys::fetch(vec![]))
         .exec()
         .await?
         .ok_or(DomainServdError::NotFound(handle.clone()))?;
@@ -36,6 +37,7 @@ pub(crate) async fn get_actor(
 
     let keys = actor
         .keys
+        .unwrap_or(vec![])
         .iter()
         .map(|k| PublicKey::new(actor_url.clone(), k.name.clone(), k.public_key.clone()))
         .collect::<Vec<PublicKey>>();

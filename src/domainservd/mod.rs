@@ -83,9 +83,20 @@ pub struct Args {
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub connection_string: String,
+    pub postgres: PostgresConfig,
+    pub mongodb: MongoDBConfig,
     pub listen: String,
     pub use_ssl: bool,
+}
+
+#[derive(Deserialize)]
+pub struct MongoDBConfig {
+    pub connection_string: String,
+}
+
+#[derive(Deserialize)]
+pub struct PostgresConfig {
+    pub connection_string: String,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -105,8 +116,12 @@ type SharedState = Arc<Mutex<ServerState>>;
 pub fn read_config(args: &Args) -> Result<Config> {
     let cfg = config::Config::builder()
         .set_default(
-            "connection_string",
+            "mongodb.connection_string",
             "mongodb://dev:dev@localhost:27017/oxifed?authSource=admin&retryWrites=true&w=majority",
+        )?
+        .set_default(
+            "postgres.connection_string",
+            "postgres://dev:dev@localhost:5432/oxifed",
         )?
         .set_default("listen", "127.0.0.1:3000")?
         .set_default("use_ssl", false)?
@@ -120,11 +135,11 @@ pub fn read_config(args: &Args) -> Result<Config> {
 pub async fn listen(cfg: Config) -> Result<()> {
     debug!("Starting domainservd");
     let prisam_client = PrismaClient::_builder()
-        .with_url(cfg.connection_string.clone())
+        .with_url(cfg.postgres.connection_string.clone())
         .build()
         .await?;
 
-    let mongo_client = mongodb::Client::with_uri_str(&cfg.connection_string).await?;
+    let mongo_client = mongodb::Client::with_uri_str(&cfg.mongodb.connection_string).await?;
 
     let shared_state = SharedState::new(Mutex::new(ServerState {
         use_ssl: cfg.use_ssl,
@@ -141,6 +156,6 @@ pub async fn listen(cfg: Config) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
     info!("Listening on {}", &cfg.listen);
     axum::serve(listener, app).await?;
-    mongo_client.shutdown();
+    mongo_client.shutdown().await;
     Ok(())
 }

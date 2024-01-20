@@ -1,5 +1,6 @@
 use crate::prisma::actor::Data;
 
+#[allow(dead_code)]
 pub struct Actor {
     name: String,
     domain: String,

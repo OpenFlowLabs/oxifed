@@ -58,26 +58,30 @@ pub async fn create_blog(client: PrismaClient, actor: String) -> Result<()> {
     let mut csprng = OsRng;
     let signing_key: SigningKey = SigningKey::generate(&mut csprng);
 
-    let main_key = prisma::key::Create {
-        name: "main".to_owned(),
-        private_key: signing_key
-            .to_pkcs8_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)?
-            .to_string(),
-        public_key: signing_key
-            .verifying_key()
-            .to_public_key_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)?
-            .to_string(),
-        key_type: KeyType::Ed25519,
-        _params: vec![],
-    };
-
-    client
+    let actor = client
         .actor()
         .create(
             actor_name.clone(),
             actor,
             domain::dns_name::equals(domain_name.clone()),
-            vec![prisma::actor::keys::set(vec![main_key])],
+            vec![],
+        )
+        .exec()
+        .await?;
+
+    let _main_key = client
+        .key()
+        .create(
+            prisma::actor::id::equals(actor.id),
+            "main".to_owned(),
+            signing_key
+                .to_pkcs8_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)?
+                .to_string(),
+            signing_key
+                .verifying_key()
+                .to_public_key_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)?
+                .to_string(),
+            vec![],
         )
         .exec()
         .await?;
