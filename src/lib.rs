@@ -1,18 +1,19 @@
 pub mod activitypub;
 pub mod actor;
+pub mod article;
 pub mod domainservd;
 #[allow(warnings, unused)]
 pub mod prisma;
 pub mod webfinger;
 
+use chrono::{DateTime, FixedOffset};
 use clap::{Parser, Subcommand};
-use config::File;
 use miette::Diagnostic;
 #[allow(unused_imports)]
 use prisma::*;
+use pulldown_cmark::{html, Options};
 use serde::Deserialize;
 use sha3::{Digest, Sha3_256};
-use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
@@ -56,27 +57,24 @@ pub struct Args {
 
 #[derive(Deserialize)]
 pub struct Config {
+    pub postgres: PostgresConfig,
+    pub mongodb: MongoDBConfig,
+    pub listen: String,
+}
+
+#[derive(Deserialize)]
+pub struct MongoDBConfig {
+    pub connection_string: String,
+}
+
+#[derive(Deserialize)]
+pub struct PostgresConfig {
     pub connection_string: String,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Commands {
-    CreateBlog { actor: String },
-    ListBlogs,
-    PublishArticle { actor: String, file: PathBuf },
-}
-
-pub fn read_config(args: &Args) -> Result<Config> {
-    let cfg = config::Config::builder()
-        .set_default(
-            "connection_string",
-            "mongodb://dev:dev@localhost:27017/oxifed?authSource=admin&retryWrites=true&w=majority",
-        )?
-        .add_source(File::with_name("oxiblog").required(false))
-        .add_source(File::with_name("/etc/oxifed/blog").required(false))
-        .set_override_option("connection_string", args.connection_string.clone())?
-        .build()?;
-    Ok(cfg.try_deserialize()?)
+    Start,
 }
 
 pub fn generate_descriptor(content: &str, actor: &str) -> Result<String> {
@@ -93,4 +91,21 @@ pub fn build_base_url(use_ssl: bool, domain: &str) -> String {
     } else {
         format!("http://{domain}")
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Frontmatter {
+    pub title: String,
+    #[serde(default)]
+    pub draft: bool,
+    pub date: DateTime<FixedOffset>,
+    pub tags: Option<Vec<String>>,
+}
+
+pub fn parse_markdown(source: &str) -> String {
+    let options = Options::all();
+    let parser = pulldown_cmark::Parser::new_ext(source, options);
+    let mut content_html = String::new();
+    html::push_html(&mut content_html, parser);
+    content_html
 }

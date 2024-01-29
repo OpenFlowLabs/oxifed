@@ -10,6 +10,16 @@ services:
       POSTGRES_DB: oxifed
     ports:
       - "5432:5432"
+  rabbitmq:
+    image: rabbitmq:management
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_VHOST: dev
+      RABBITMQ_DEFAULT_USER: dev
+      RABBITMQ_DEFAULT_PASS: dev
+    ports:
+      - "15672:15672"
+      - "5672:5672"
   mongodb:
     image: mongo:7
     restart: always

@@ -1,6 +1,8 @@
+use async_graphql::SimpleObject;
+
 use crate::prisma::actor::Data;
 
-#[allow(dead_code)]
+#[derive(Clone, SimpleObject)]
 pub struct Actor {
     name: String,
     domain: String,

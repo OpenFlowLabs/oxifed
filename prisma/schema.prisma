@@ -21,12 +21,13 @@ model Domain {
 }
 
 model Actor {
-  id          String @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   displayName String
-  handle      String @unique
-  domain      Domain @relation("Members", fields: [domainId], references: [id])
-  domainId    String @db.Uuid
+  handle      String    @unique
+  domain      Domain    @relation("Members", fields: [domainId], references: [id])
+  domainId    String    @db.Uuid
   notes       Note[]
+  articles    Article[]
   keys        Key[]
 }
 
@@ -51,6 +52,8 @@ model Article {
   date         DateTime
   content      String
   content_html String
+  author       Actor    @relation(fields: [authorId], references: [id])
+  authorId     String   @db.Uuid
   draft        Boolean  @default(false)
   tags         String[]
   note         Note     @relation(fields: [noteId], references: [id])

@@ -74,6 +74,59 @@ pub enum Object {
     Document(Document),
 }
 
+/// Internally used activity Object that instructs the daemons to
+/// publish the correct API's will also be produced by domainservd
+/// in order to tell the internal daemons about chenges received.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum InternalActivity {
+    Create {
+        /// Internal database Id URL and links will be filled by publisher
+        id: String,
+        /// Additional Context objects to add to the activity context
+        additional_context: Option<Vec<String>>,
+        /// Handle or internal actor id.
+        actor: String,
+        /// List of targets to send this message to
+        /// Special targets, public and followers are allowed aswell
+        to: Vec<String>,
+        /// List of Activitypub actors or handles to CC
+        cc: Vec<String>,
+        /// List of Activitypub actors or handles to BCC
+        bcc: Vec<String>,
+        /// the object itself
+        object: serde_json::Value,
+    },
+    SetKey {
+        /// Id of the key to set. Main will always be used and should be the only identified set
+        key_id: String,
+        /// Handle or internal id of the actor who's key we are setting
+        actor: String,
+        /// Base64 Encoded Pem Encoded Private Part of the Key
+        signing_key_pem_base64: String,
+        /// Base64 Encoded Pem Encoded Public Part of the Key
+        verifying_key_pem_base64: String,
+    },
+    Update {
+        /// Internal database Id URL and links will be filled by publisher
+        id: String,
+        /// Handle or internal actor id.
+        actor: String,
+        /// List of targets to send this message to
+        to: Vec<Url>,
+        /// List of Activitypub actors or handles to CC
+        cc: Vec<Url>,
+        /// List of Activitypub actors or handles to BCC
+        bcc: Vec<Url>,
+        /// the object itself
+        object: serde_json::Value,
+    },
+    Delete {
+        /// Internal database Id URL and links will be filled by publisher
+        id: String,
+    },
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Source {

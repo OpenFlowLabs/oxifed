@@ -1,5 +1,9 @@
 [package]
 name = "oxifed"
+version.workspace = true
+edition.workspace = true
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
@@ -9,9 +13,40 @@ members = [
   "xtask"
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+activitypub_federation.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+base64.workspace = true
+chrono.workspace = true
+clap.workspace = true
+config.workspace = true
+ed25519-dalek.workspace = true
+gray_matter.workspace = true
+miette.workspace = true
+mongodb.workspace = true
+prisma-client-rust.workspace = true
+prisma-client-rust-cli.workspace = true
+pulldown-cmark.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true
+sha2.workspace = true
+sha3.workspace = true
+slugify.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+webfinger.workspace = true
+async-graphql.workspace = true
+lapin.workspace = true
+deadpool-lapin.workspace = true
+deadpool.workspace = true
+
+[workspace.dependencies]
 activitypub_federation = { version = "0.5.0", default-features = false }
 axum = "0.7.3"
 axum-extra = "0.9.1"
@@ -39,4 +74,9 @@ tracing = { version = "0.1.40", features = ["log"] }
 tracing-subscriber = { version = "0.3.18", features = ["json", "tracing", "env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 webfinger = "0.5.1"
+async-graphql = "7.0.1"
+lapin = { version = "2.3.1", features = ["serde_json"] }
+deadpool-lapin = { version = "0.11.0", features = ["serde"] }
+deadpool = { version = "0.10.0", features = ["serde"] }
 
+oxifed = { version = "*", path = "."}
