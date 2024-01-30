@@ -4,6 +4,8 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
+pub const PUBLIC_TARGET: &str = "https://www.w3.org/ns/activitystreams#Public";
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Activity {

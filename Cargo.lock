@@ -3939,6 +3939,7 @@ dependencies = [
  "prisma-client-rust-cli",
  "pulldown-cmark",
  "rand 0.8.5",
+ "scanf",
  "serde",
  "serde_json",
  "serde_with 3.4.0",
@@ -5265,6 +5266,15 @@ name = "saturating"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ece8e78b2f38ec51c51f5d475df0a7187ba5111b2a28bdc761ee05b075d40a71"
+
+[[package]]
+name = "scanf"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1af23b806e681b4f838a9887655219b755a418f60353968a88b0b87a35b3e8ce"
+dependencies = [
+ "nom",
+]
 
 [[package]]
 name = "schannel"

@@ -45,6 +45,7 @@ async-graphql.workspace = true
 lapin.workspace = true
 deadpool-lapin.workspace = true
 deadpool.workspace = true
+scanf = "1.2.1"
 
 [workspace.dependencies]
 activitypub_federation = { version = "0.5.0", default-features = false }
