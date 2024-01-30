@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   build:
@@ -16,10 +18,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Cache Rust compilation
-      uses: metalbear-co/sccache-action@v1.1.0
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Run sccache-cache
+      uses: mozilla-actions/sccache-action@v0.0.3
     - name: Prisma generate
       run: cargo prisma generate
     - name: Build
