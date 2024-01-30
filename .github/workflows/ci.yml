@@ -20,6 +20,8 @@ jobs:
       uses: metalbear-co/sccache-action@v1.1.0
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Prisma generate
+      run: cargo prisma generate
     - name: Build
       run: cargo build --verbose
     - name: Run tests
